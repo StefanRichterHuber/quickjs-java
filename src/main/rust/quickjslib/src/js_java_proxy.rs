@@ -1,6 +1,5 @@
 use jni::{objects::JObject, JNIEnv};
 use rquickjs::{FromJs, Value};
-
 /// This proxy assist in converting JS values to Java values
 pub struct JSJavaProxy<'js> {
     pub value: Value<'js>,
@@ -13,6 +12,7 @@ impl<'js> FromJs<'js> for JSJavaProxy<'js> {
 }
 
 impl<'js, 'vm, 'r> JSJavaProxy<'js> {
+    // Converts the stored JS value to an Java object
     pub fn into_jobject(self, env: &mut JNIEnv<'vm>) -> Option<JObject<'vm>> {
         if self.value.is_function() {
             println!("JS value is a function -> return not possible");
