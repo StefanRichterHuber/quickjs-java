@@ -1,9 +1,9 @@
 use jni::{
     objects::{JObject, JString},
-    sys::{jint, jlong, jstring},
+    sys::{jint, jlong},
     JNIEnv,
 };
-use rquickjs::{Coerced, Context, Function, Runtime};
+use rquickjs::{Context, FromJs, Function, Runtime, Value};
 use std::rc::Rc;
 
 // ----------------------------------------------------------------------------------------
@@ -149,6 +149,104 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
     _ = context_to_ptr(context);
 }
 
+/// This proxy assist in converting JS values to Java values
+struct JSJavaProxy<'js> {
+    value: Value<'js>,
+}
+
+impl<'js, 'vm, 'r> JSJavaProxy<'js> {
+    pub fn into_jobject(self, env: &mut JNIEnv<'vm>) -> Option<JObject<'vm>> {
+        if self.value.is_function() {
+            println!("Return value of the script is a function -> return not possible");
+            return Some(JObject::null());
+        } else if self.value.is_object() {
+            println!("Return value of the script is an object");
+
+            let ctx = self.value.ctx();
+            let value: String = ctx
+                .json_stringify(&self.value)
+                .unwrap()
+                .unwrap()
+                .get()
+                .unwrap();
+            let object = env.new_string(value).unwrap().into();
+
+            return Some(object);
+        } else if self.value.is_float() {
+            println!("Return value of the script is a float");
+
+            let value = self.value.as_float().unwrap();
+            let class = env
+                .find_class("java/lang/Double")
+                .expect("Failed to load the target class");
+            let result = env
+                .call_static_method(
+                    class,
+                    "valueOf",
+                    "(D)Ljava/lang/Double;",
+                    &[jni::objects::JValueGen::Double(value)],
+                )
+                .expect("Failed to create Integer object from value");
+            let object = result.l().unwrap();
+            return Some(object);
+        } else if self.value.is_int() {
+            println!("Return value of the script is an int");
+
+            let value = self.value.as_int().unwrap();
+            let class = env
+                .find_class("java/lang/Integer")
+                .expect("Failed to load the target class");
+            let result = env
+                .call_static_method(
+                    class,
+                    "valueOf",
+                    "(I)Ljava/lang/Integer;",
+                    &[jni::objects::JValueGen::Int(value)],
+                )
+                .expect("Failed to create Integer object from value");
+            let object = result.l().unwrap();
+            return Some(object);
+        } else if self.value.is_string() {
+            println!("Return value of the script is a string");
+            let value: String = self.value.as_string().unwrap().get().unwrap();
+            let object = env.new_string(value).unwrap().into();
+
+            return Some(object);
+        } else if self.value.is_null() {
+            println!("Return value of the script is a null value");
+            return Some(JObject::null());
+        } else if self.value.is_undefined() {
+            println!("Return value of the script is a undefined value");
+            return Some(JObject::null());
+        } else if self.value.is_bool() {
+            println!("Return value of the script is a boolean");
+            let value = self.value.as_bool().unwrap();
+            let class = env
+                .find_class("java/lang/Boolean")
+                .expect("Failed to load the target class");
+            let field = if value { "TRUE" } else { "FALSE" };
+            let result = env
+                .get_static_field(class, field, "Ljava/lang/Boolean;")
+                .unwrap();
+
+            let object = result.l().unwrap();
+            return Some(object);
+        } else {
+            println!(
+                "Return value of the script is unknown: {}",
+                self.value.as_raw().tag
+            );
+            return None;
+        }
+    }
+}
+
+impl<'js> FromJs<'js> for JSJavaProxy<'js> {
+    fn from_js(_ctx: &rquickjs::Ctx<'js>, value: Value<'js>) -> rquickjs::Result<Self> {
+        Ok(JSJavaProxy { value })
+    }
+}
+
 /// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.eval(long, String)
 #[no_mangle]
 pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext_eval<'a>(
@@ -156,20 +254,26 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
     _obj: JObject<'a>,
     context_ptr: jlong,
     script: JString<'a>,
-) -> jstring {
+) -> JObject<'a> {
     let context = ptr_to_context(context_ptr);
     let script_string: String = _env
         .get_string(&script)
         .expect("Couldn't get java string!")
         .into();
 
-    let r = context.with(|ctx| {
-        let r = ctx.eval::<Coerced<String>, _>(script_string).unwrap().0;
-        r
+    let r = context.with(move |ctx| {
+        let s: Result<JSJavaProxy, _> = ctx.eval(script_string);
+        match s {
+            Ok(s) => s.into_jobject(&mut _env).unwrap(),
+            Err(e) => {
+                _env.throw(e.to_string()).unwrap();
+                JObject::null()
+            }
+        }
     });
     // Prevents dropping the context
     _ = context_to_ptr(context);
-    _env.new_string(r).unwrap().into_raw()
+    r
 }
 
 /// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.setGlobal(long, String, Function<String, String>)

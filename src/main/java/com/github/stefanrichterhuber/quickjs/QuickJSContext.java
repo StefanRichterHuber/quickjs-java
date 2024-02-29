@@ -17,7 +17,7 @@ public class QuickJSContext implements Closeable {
 
     private native void setGlobal(long ptr, String name, Function<String, String> f);
 
-    private native String eval(long ptr, String script);
+    private native Object eval(long ptr, String script);
 
     @Override
     public void close() throws IOException {
@@ -79,7 +79,7 @@ public class QuickJSContext implements Closeable {
      * @param script Script to execute
      * @return Result from the script
      */
-    public String eval(String script) {
+    public Object eval(String script) {
         return this.eval(getContextPointer(), script);
     }
 }
