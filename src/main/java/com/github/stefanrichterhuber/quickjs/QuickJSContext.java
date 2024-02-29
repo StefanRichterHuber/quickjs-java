@@ -15,9 +15,9 @@ public class QuickJSContext implements Closeable {
 
     private native void setGlobal(long ptr, String name, String value);
 
-    private native String eval(long ptr, String script);
-
     private native void setGlobal(long ptr, String name, Function<String, String> f);
+
+    private native String eval(long ptr, String script);
 
     @Override
     public void close() throws IOException {

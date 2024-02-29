@@ -11,10 +11,8 @@ public class QuickJSRuntime implements Closeable {
     static {
         JarJniLoader.loadLib(
                 App.class,
-
                 // A platform-specific path is automatically suffixed to path below.
                 "/libs",
-
                 // The "lib" prefix and ".so|.dynlib|.dll" suffix are added automatically as
                 // needed.
                 "quickjslib");
