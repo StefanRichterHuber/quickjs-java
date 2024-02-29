@@ -324,7 +324,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
                 key_string.clone(),
                 Function::new(ctx.clone(), f)
                     .unwrap()
-                    .with_name("key_string")
+                    .with_name(&key_string)
                     .unwrap(),
             )
             .unwrap();
