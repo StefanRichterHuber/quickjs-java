@@ -17,9 +17,19 @@ public class App {
 
             context.setGlobal("a", "Hello");
             context.setGlobal("b", "World");
-            context.setGlobal("f", v -> v.repeat(3));
-
-            // String result = context.eval("f(a + ' ' + b + '!')"); {
+            context.setGlobal("f", v -> v.toString().repeat(3));
+            context.setGlobal("fx", f -> {
+                System.out.println("Function fx called");
+                return "hello ".repeat(3);
+            });
+            {
+                Object result = context.eval("f('Hello ')");
+                System.out.println(result);
+            }
+            {
+                Object result = context.eval("fx(true)");
+                System.out.println(result);
+            }
             {
                 Object result = context.eval("let f = function() {\n" + //
                         "    return a +b ;\n" + //
@@ -35,7 +45,7 @@ public class App {
 
             }
             {
-                Object result = context.eval("1+2");
+                Object result = context.eval("1 + 2");
 
                 System.out.println(result);
 

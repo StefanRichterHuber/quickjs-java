@@ -1,9 +1,13 @@
+pub mod js_java_proxy;
+
 use jni::{
-    objects::{JObject, JString},
+    errors,
+    objects::{JObject, JString, JValueGen},
     sys::{jint, jlong},
     JNIEnv,
 };
-use rquickjs::{Context, FromJs, Function, Runtime, Value};
+use js_java_proxy::JSJavaProxy;
+use rquickjs::{Context, Function, Runtime, Value};
 use std::rc::Rc;
 
 // ----------------------------------------------------------------------------------------
@@ -149,104 +153,6 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
     _ = context_to_ptr(context);
 }
 
-/// This proxy assist in converting JS values to Java values
-struct JSJavaProxy<'js> {
-    value: Value<'js>,
-}
-
-impl<'js, 'vm, 'r> JSJavaProxy<'js> {
-    pub fn into_jobject(self, env: &mut JNIEnv<'vm>) -> Option<JObject<'vm>> {
-        if self.value.is_function() {
-            println!("Return value of the script is a function -> return not possible");
-            return Some(JObject::null());
-        } else if self.value.is_object() {
-            println!("Return value of the script is an object");
-
-            let ctx = self.value.ctx();
-            let value: String = ctx
-                .json_stringify(&self.value)
-                .unwrap()
-                .unwrap()
-                .get()
-                .unwrap();
-            let object = env.new_string(value).unwrap().into();
-
-            return Some(object);
-        } else if self.value.is_float() {
-            println!("Return value of the script is a float");
-
-            let value = self.value.as_float().unwrap();
-            let class = env
-                .find_class("java/lang/Double")
-                .expect("Failed to load the target class");
-            let result = env
-                .call_static_method(
-                    class,
-                    "valueOf",
-                    "(D)Ljava/lang/Double;",
-                    &[jni::objects::JValueGen::Double(value)],
-                )
-                .expect("Failed to create Integer object from value");
-            let object = result.l().unwrap();
-            return Some(object);
-        } else if self.value.is_int() {
-            println!("Return value of the script is an int");
-
-            let value = self.value.as_int().unwrap();
-            let class = env
-                .find_class("java/lang/Integer")
-                .expect("Failed to load the target class");
-            let result = env
-                .call_static_method(
-                    class,
-                    "valueOf",
-                    "(I)Ljava/lang/Integer;",
-                    &[jni::objects::JValueGen::Int(value)],
-                )
-                .expect("Failed to create Integer object from value");
-            let object = result.l().unwrap();
-            return Some(object);
-        } else if self.value.is_string() {
-            println!("Return value of the script is a string");
-            let value: String = self.value.as_string().unwrap().get().unwrap();
-            let object = env.new_string(value).unwrap().into();
-
-            return Some(object);
-        } else if self.value.is_null() {
-            println!("Return value of the script is a null value");
-            return Some(JObject::null());
-        } else if self.value.is_undefined() {
-            println!("Return value of the script is a undefined value");
-            return Some(JObject::null());
-        } else if self.value.is_bool() {
-            println!("Return value of the script is a boolean");
-            let value = self.value.as_bool().unwrap();
-            let class = env
-                .find_class("java/lang/Boolean")
-                .expect("Failed to load the target class");
-            let field = if value { "TRUE" } else { "FALSE" };
-            let result = env
-                .get_static_field(class, field, "Ljava/lang/Boolean;")
-                .unwrap();
-
-            let object = result.l().unwrap();
-            return Some(object);
-        } else {
-            println!(
-                "Return value of the script is unknown: {}",
-                self.value.as_raw().tag
-            );
-            return None;
-        }
-    }
-}
-
-impl<'js> FromJs<'js> for JSJavaProxy<'js> {
-    fn from_js(_ctx: &rquickjs::Ctx<'js>, value: Value<'js>) -> rquickjs::Result<Self> {
-        Ok(JSJavaProxy { value })
-    }
-}
-
 /// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.eval(long, String)
 #[no_mangle]
 pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext_eval<'a>(
@@ -266,7 +172,8 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
         match s {
             Ok(s) => s.into_jobject(&mut _env).unwrap(),
             Err(e) => {
-                _env.throw(e.to_string()).unwrap();
+                _env.throw_new("java/lang/Exception", e.to_string())
+                    .unwrap();
                 JObject::null()
             }
         }
@@ -292,27 +199,52 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
         .get_string(&key)
         .expect("Couldn't get java string!")
         .into();
-    let name = key_string.clone();
     let target = Rc::new(_env.new_global_ref(value).unwrap());
 
     // https://github.com/jni-rs/jni-rs/issues/488#issuecomment-1699852154
     let vm = _env.get_java_vm().unwrap();
 
-    let f = move |msg: String| {
-        println!("Calling function {} with parameter '{}'", name, msg);
-
+    let f = move |msg: Value| {
         let mut env = vm.get_env().unwrap();
-        let param = env.new_string(msg).unwrap();
 
-        let call_result = env.call_method(
+        let param = JSJavaProxy { value: msg }.into_jobject(&mut env).unwrap();
+
+        let call_result: errors::Result<JValueGen<JObject<'_>>> = env.call_method(
             target.as_ref(),
             "apply",
             "(Ljava/lang/Object;)Ljava/lang/Object;",
             &[jni::objects::JValueGen::Object(&param)],
         );
 
-        let o = call_result.unwrap().l().unwrap();
-        let str: JString = o.into();
+        // CHecks if there was an exception, if yes clear it and print the error message
+        match env.exception_check() {
+            Ok(exception_occured) => {
+                if exception_occured {
+                    match env.exception_occurred() {
+                        Ok(throwable) => {
+                            // @see https://stackoverflow.com/questions/27072459/how-to-get-the-message-from-a-java-exception-caught-in-jni
+                            // Seems to be necessary, otherwise fetching the message fails
+                            env.exception_clear().unwrap();
+
+                            let message = env.call_method(
+                                &throwable,
+                                "getMessage",
+                                "()Ljava/lang/String;",
+                                &[],
+                            );
+
+                            let str: JString = message.unwrap().l().unwrap().into();
+                            let error_msg: String = env.get_string(&str).unwrap().into();
+                            println!("Error during invocation {}", error_msg);
+                        }
+                        Err(_) => {} // No exception occurred. Do nothing.
+                    };
+                }
+            }
+            Err(_) => {}
+        }
+
+        let str: JString = call_result.unwrap().l().unwrap().into();
         let plain: String = env.get_string(&str).unwrap().into();
         plain
     };
