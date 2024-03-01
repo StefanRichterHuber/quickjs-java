@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -42,6 +43,16 @@ public class QuickJSContext implements Closeable {
             throw new IllegalStateException("QuickJSContext is closed");
         }
         return this.ptr;
+    }
+
+    /**
+     * Adds a global variable to the context.
+     * 
+     * @param name  Name of the variable
+     * @param value Value of the variable
+     */
+    public void setGlobal(String name, Map<String, Object> value) {
+        this.setGlobal(getContextPointer(), name, value);
     }
 
     /**

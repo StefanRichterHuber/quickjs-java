@@ -23,6 +23,7 @@ pub enum ProxiedJavaValue {
     FUNCTION(Box<dyn Fn(Value<'_>) -> ProxiedJavaValue>),
     BIFUNCTION(Box<dyn Fn(Value<'_>, Value<'_>) -> ProxiedJavaValue>),
     SUPPLIER(Box<dyn Fn() -> ProxiedJavaValue>),
+    MAP(Vec<(String, ProxiedJavaValue)>),
 }
 
 impl ProxiedJavaValue {
@@ -70,8 +71,61 @@ impl ProxiedJavaValue {
         let consumer_class = env
             .find_class("java/util/function/Consumer")
             .expect("Failed to load the target class");
+        let map_class = env
+            .find_class("java/util/Map")
+            .expect("Failed to load the target class");
 
-        if env.is_instance_of(&obj, consumer_class).unwrap() {
+        if env.is_instance_of(&obj, map_class).unwrap() {
+            println!("Java value is a Map<Object, Object>");
+            // Result of the operation -> a list of key-value pairs
+            let mut items: Vec<(String, ProxiedJavaValue)> = vec![];
+
+            // Iterate over all items
+
+            // Fetch the entry set
+            let entry_set_result: errors::Result<JValueGen<JObject<'_>>> =
+                env.call_method(obj, "entrySet", "()Ljava/util/Set;", &[]);
+
+            let entry_set = entry_set_result.unwrap().l().unwrap();
+
+            // Create an iterator over all results
+            let iterator_result: errors::Result<JValueGen<JObject<'_>>> =
+                env.call_method(entry_set, "iterator", "()Ljava/util/Iterator;", &[]);
+            let iterator = iterator_result.unwrap().l().unwrap();
+
+            // FIXME cache method ids for better performance
+            loop {
+                // Check if there is another item
+                let has_next_result = env.call_method(&iterator, "hasNext", "()Z", &[]);
+                let has_next = has_next_result.unwrap().z().unwrap();
+                if !has_next {
+                    println!("No more items in the map");
+                    break;
+                }
+
+                // Map next item
+                let next_result = env.call_method(&iterator, "next", "()Ljava/lang/Object;", &[]);
+                let next = next_result.unwrap().l().unwrap();
+
+                // Get key
+                let get_key_result = env.call_method(&next, "getKey", "()Ljava/lang/Object;", &[]);
+                let key = get_key_result.unwrap().l().unwrap().into();
+                let key: String = env.get_string(&key).unwrap().into();
+
+                // Get value from entry
+                let get_value_result =
+                    env.call_method(&next, "getValue", "()Ljava/lang/Object;", &[]);
+                let value = get_value_result.unwrap().l().unwrap();
+                let value = ProxiedJavaValue::from_object(env, value);
+
+                println!("Found value with key: {}", key);
+
+                // Push result to map
+                items.push((key, value));
+            }
+
+            ProxiedJavaValue::MAP(items)
+        } else if env.is_instance_of(&obj, consumer_class).unwrap() {
             let target = Rc::new(env.new_global_ref(obj).unwrap());
             // https://github.com/jni-rs/jni-rs/issues/488#issuecomment-1699852154
             let vm = env.get_java_vm().unwrap();
@@ -282,6 +336,16 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
             ProxiedJavaValue::BIFUNCTION(f) => {
                 let func = Function::new(ctx.clone(), f).unwrap();
                 let s = Value::from_function(func);
+                Ok(s)
+            }
+            ProxiedJavaValue::MAP(values) => {
+                let obj = rquickjs::Object::new(ctx.clone()).unwrap();
+
+                for value in values.into_iter() {
+                    obj.set(value.0.as_str(), value.1.into_js(ctx).unwrap())
+                        .unwrap();
+                }
+                let s = Value::from_object(obj);
                 Ok(s)
             }
         };

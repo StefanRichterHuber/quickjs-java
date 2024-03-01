@@ -1,6 +1,8 @@
 package com.github.stefanrichterhuber;
 
 import java.io.IOException;
+import java.util.Map;
+import java.util.function.Supplier;
 
 import com.github.stefanrichterhuber.quickjs.QuickJSContext;
 import com.github.stefanrichterhuber.quickjs.QuickJSRuntime;
@@ -16,6 +18,8 @@ public class App {
                 QuickJSContext context = runtime.createContext()) {
 
             {
+                context.setGlobal("m",
+                        Map.of("f1", (Supplier<String>) () -> "no mans sky", "hello", "world"));
                 context.setGlobal("fa", () -> "Hello");
                 context.setGlobal("fb", a -> a);
                 context.setGlobal("fc", (a, b) -> a.toString() + b.toString());
@@ -23,6 +27,8 @@ public class App {
                     System.out.println(a);
                 });
 
+                System.out.println("Result from accessing map m: " + context.eval("m.hello"));
+                System.out.println("Result from accessing map function m: " + context.eval("m.f1()"));
                 System.out.println("Result from call fa: " + context.eval("fa()"));
                 System.out.println("Result from call fb: " + context.eval("fb('Hello')"));
                 System.out.println("Result from call fc: " + context.eval("fc('Hello', 'World')"));
