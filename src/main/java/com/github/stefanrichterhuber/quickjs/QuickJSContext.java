@@ -15,8 +15,6 @@ public class QuickJSContext implements Closeable {
 
     private native void setGlobal(long ptr, String name, Object value);
 
-    private native void setGlobal(long ptr, String name, Function<Object, Object> f);
-
     private native Object eval(long ptr, String script);
 
     @Override
@@ -60,6 +58,18 @@ public class QuickJSContext implements Closeable {
      * @param value Value of the variable
      */
     public void setGlobal(String name, BigInteger value) {
+        // FIXME currently not supported by rquickjs
+        this.setGlobal(getContextPointer(), name, value);
+    }
+
+    /**
+     * Adds a global variable to the context.
+     * 
+     * @param name  Name of the variable
+     * @param value Value of the variable
+     */
+    public void setGlobal(String name, long value) {
+        // FIXME currently not supported by rquickjs
         this.setGlobal(getContextPointer(), name, value);
     }
 

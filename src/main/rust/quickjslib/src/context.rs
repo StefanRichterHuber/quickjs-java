@@ -1,15 +1,12 @@
-use std::rc::Rc;
-
 use crate::java_js_proxy::ProxiedJavaValue;
 use crate::js_java_proxy::JSJavaProxy;
 use crate::runtime::{ptr_to_runtime, runtime_to_ptr};
 use jni::{
-    errors,
-    objects::{JObject, JString, JValueGen},
+    objects::{JObject, JString},
     sys::jlong,
     JNIEnv,
 };
-use rquickjs::{Context, Error, Function, Value};
+use rquickjs::{Context, Error};
 
 // ----------------------------------------------------------------------------------------
 
@@ -140,65 +137,4 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
     // Prevents dropping the context
     _ = context_to_ptr(context);
     r
-}
-
-/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.setGlobal(long, String, Function<String, String>)
-#[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext_setGlobal__JLjava_lang_String_2Ljava_util_function_Function_2<
-    'a,
->(
-    mut _env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-    context_ptr: jlong,
-    key: JString<'a>,
-    value: JObject<'a>,
-) {
-    let context = ptr_to_context(context_ptr);
-    let key_string: String = _env
-        .get_string(&key)
-        .expect("Couldn't get java string!")
-        .into();
-    let target = Rc::new(_env.new_global_ref(value).unwrap());
-
-    // https://github.com/jni-rs/jni-rs/issues/488#issuecomment-1699852154
-    let vm = _env.get_java_vm().unwrap();
-
-    let f = move |msg: Value| {
-        let mut env = vm.get_env().unwrap();
-
-        let param = JSJavaProxy::new(msg).into_jobject(&mut env).unwrap();
-        let call_result: errors::Result<JValueGen<JObject<'_>>> = env.call_method(
-            target.as_ref(),
-            "apply",
-            "(Ljava/lang/Object;)Ljava/lang/Object;",
-            &[jni::objects::JValueGen::Object(&param)],
-        );
-
-        let result = if env.exception_check().unwrap() {
-            let exception = env.exception_occurred().unwrap();
-            ProxiedJavaValue::from_throwable(&mut env, exception)
-        } else {
-            let result = call_result.unwrap().l().unwrap();
-            ProxiedJavaValue::from_object(&mut env, result)
-        };
-
-        result
-    };
-
-    let _r = context.with(|ctx| {
-        let globals = ctx.globals();
-        globals
-            .set(
-                key_string.clone(),
-                Function::new(ctx.clone(), f)
-                    .unwrap()
-                    .with_name(&key_string)
-                    .unwrap(),
-            )
-            .unwrap();
-
-        println!("Set global [function] {}", key_string);
-    });
-    // Prevents dropping the context
-    _ = context_to_ptr(context);
 }

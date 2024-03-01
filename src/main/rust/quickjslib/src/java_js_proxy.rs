@@ -1,10 +1,15 @@
-use jni::objects::JThrowable;
+use std::rc::Rc;
+
+use jni::errors;
+use jni::objects::{JThrowable, JValueGen};
 use jni::{
     objects::{JObject, JString},
     JNIEnv,
 };
 use log::info;
-use rquickjs::{BigInt, IntoJs, Value};
+use rquickjs::{BigInt, Function, IntoJs, Value};
+
+use crate::js_java_proxy::JSJavaProxy;
 
 pub enum ProxiedJavaValue {
     THROWABLE(String),
@@ -15,6 +20,7 @@ pub enum ProxiedJavaValue {
     BOOL(bool),
     BIGDECIMAL(String),
     BIGINTEGER(i64),
+    FUNCTION(Box<dyn Fn(Value<'_>) -> ProxiedJavaValue>),
 }
 
 impl ProxiedJavaValue {
@@ -50,8 +56,39 @@ impl ProxiedJavaValue {
         let biginteger_class = env
             .find_class("java/math/BigInteger")
             .expect("Failed to load the target class");
+        let function_class = env
+            .find_class("java/util/function/Function")
+            .expect("Failed to load the target class");
 
-        if env.is_instance_of(&obj, biginteger_class).unwrap() {
+        if env.is_instance_of(&obj, function_class).unwrap() {
+            let target = Rc::new(env.new_global_ref(obj).unwrap());
+            // https://github.com/jni-rs/jni-rs/issues/488#issuecomment-1699852154
+            let vm = env.get_java_vm().unwrap();
+
+            let f = move |msg: Value| {
+                let mut env = vm.get_env().unwrap();
+
+                let param = JSJavaProxy::new(msg).into_jobject(&mut env).unwrap();
+                let call_result: errors::Result<JValueGen<JObject<'_>>> = env.call_method(
+                    target.as_ref(),
+                    "apply",
+                    "(Ljava/lang/Object;)Ljava/lang/Object;",
+                    &[jni::objects::JValueGen::Object(&param)],
+                );
+
+                let result = if env.exception_check().unwrap() {
+                    let exception = env.exception_occurred().unwrap();
+                    ProxiedJavaValue::from_throwable(&mut env, exception)
+                } else {
+                    let result = call_result.unwrap().l().unwrap();
+                    ProxiedJavaValue::from_object(&mut env, result)
+                };
+
+                result
+            };
+            println!("Java value is a Function<Object, Object>");
+            ProxiedJavaValue::FUNCTION(Box::new(f))
+        } else if env.is_instance_of(&obj, biginteger_class).unwrap() {
             // Convert big integer to string -> later on bag to JS big integer
             let raw_value = env.call_method(&obj, "longValue", "()J", &[]);
             let value = raw_value.unwrap().j().unwrap();
@@ -134,8 +171,14 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
                 s
             }
             ProxiedJavaValue::BIGINTEGER(v) => {
+                // TODO fixme
                 let bi = BigInt::from_i64(ctx.clone(), v).unwrap();
                 let s = Value::from_big_int(bi);
+                Ok(s)
+            }
+            ProxiedJavaValue::FUNCTION(f) => {
+                let func = Function::new(ctx.clone(), f).unwrap();
+                let s = Value::from_function(func);
                 Ok(s)
             }
         };
