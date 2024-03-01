@@ -160,6 +160,12 @@ public class QuickJSContextTest {
                 context.setGlobal("f10", f1);
                 assertEquals("hello world!", context.eval("let f = function(v) { return v + ' world'; };f10(f)"));
             }
+            // Returns maps
+            {
+                Supplier<Map<String, Object>> f1 = () -> Map.of("a", 1, "b", 2);
+                context.setGlobal("f11", f1);
+                assertEquals(2, context.eval("f11().b"));
+            }
         }
     }
 
