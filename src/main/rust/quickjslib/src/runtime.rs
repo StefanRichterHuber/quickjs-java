@@ -1,4 +1,11 @@
-use jni::{objects::JObject, sys::jlong, JNIEnv};
+use std::sync::Mutex;
+
+use jni::{
+    objects::{JObject, JValue},
+    signature::ReturnType,
+    sys::jlong,
+    JNIEnv,
+};
 use rquickjs::Runtime;
 
 // ---------------------- com.github.stefanrichterhuber.quickjs.QuickJSRuntime
@@ -10,7 +17,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSRuntime
     mut _env: JNIEnv<'a>,
     _obj: JObject<'a>,
 ) -> jlong {
-    println!("Created QuickJS runtime");
+    log(LogLevel::DEBUG, "Created new QuickJS runtime");
     Box::into_raw(Box::new(Runtime::new().unwrap())) as jlong
 }
 
@@ -33,7 +40,89 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSRuntime
     _obj: JObject<'a>,
     runtime_ptr: jlong,
 ) {
-    println!("Closed QuickJS runtime");
+    log(LogLevel::DEBUG, "Closed QuickJS runtime");
     let runtime = ptr_to_runtime(runtime_ptr);
     drop(runtime);
+}
+
+struct LogContext {
+    method_id: jni::objects::JStaticMethodID,
+    vm: jni::JavaVM,
+}
+
+pub enum LogLevel {
+    TRACE = 0,
+    DEBUG = 1,
+    INFO = 2,
+    WARN = 3,
+    ERROR = 4,
+}
+
+impl LogLevel {
+    fn to_string(&self) -> String {
+        match self {
+            LogLevel::TRACE => "TRACE".to_string(),
+            LogLevel::DEBUG => "DEBUG".to_string(),
+            LogLevel::INFO => "INFO".to_string(),
+            LogLevel::WARN => "WARN".to_string(),
+            LogLevel::ERROR => "ERROR".to_string(),
+        }
+    }
+}
+
+static LOG_CONTEXT: Mutex<Option<LogContext>> = Mutex::new(None);
+
+/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSRuntime.initLogging()
+#[no_mangle]
+pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSRuntime_initLogging<'a>(
+    mut _env: JNIEnv<'a>,
+    _obj: JObject<'a>,
+) {
+    let log_id = _env
+        .get_static_method_id(
+            "com/github/stefanrichterhuber/quickjs/QuickJSRuntime",
+            "runtimeLog",
+            "(ILjava/lang/String;)V",
+        )
+        .unwrap();
+
+    let vm = _env.get_java_vm().unwrap();
+
+    LOG_CONTEXT.lock().unwrap().replace(LogContext {
+        method_id: log_id,
+        vm,
+    });
+}
+
+/// Utility function called for logging. If configured, passes the logging to the java function. If not use println! as fallback.
+pub fn log(level: LogLevel, message: &str) {
+    let mut log_context = LOG_CONTEXT.lock().unwrap();
+    if log_context.is_none() {
+        // No log context set -> fall back to println!
+
+        println!("[QuickJS native logging] {} {}", level.to_string(), message);
+    } else {
+        // Log context set -> use it
+
+        let log_context = log_context.as_mut().unwrap();
+
+        let method_id = log_context.method_id;
+        let level_int = level as i32;
+
+        let mut env: JNIEnv<'_> = log_context.vm.get_env().unwrap();
+        let message_string = env.new_string(message).unwrap();
+
+        let _result = unsafe {
+            env.call_static_method_unchecked(
+                "com/github/stefanrichterhuber/quickjs/QuickJSRuntime",
+                method_id,
+                ReturnType::Primitive(jni::signature::Primitive::Void),
+                &[
+                    JValue::Int(level_int).as_jni(),
+                    JValue::Object(&message_string).as_jni(),
+                ],
+            )
+        }
+        .unwrap();
+    }
 }

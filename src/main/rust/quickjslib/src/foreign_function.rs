@@ -5,7 +5,7 @@ use jni::{
 };
 use rquickjs::{function::Args, Function};
 
-use crate::{java_js_proxy, js_java_proxy::JSJavaProxy};
+use crate::{java_js_proxy, js_java_proxy::JSJavaProxy, runtime};
 
 /// Implementation com.github.stefanrichterhuber.quickjs.QuickJSFunction.closeFunction(long ptr)
 #[no_mangle]
@@ -16,7 +16,10 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSFunctio
     _obj: JObject<'a>,
     function_ptr: jlong,
 ) {
-    println!("Closed QuickJS Function");
+    runtime::log(
+        runtime::LogLevel::DEBUG,
+        format!("Closed QuickJSFunction with id {}", function_ptr).as_str(),
+    );
     let runtime = ptr_to_function(function_ptr);
     drop(runtime);
 }
