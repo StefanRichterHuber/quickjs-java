@@ -1,5 +1,7 @@
 package com.github.stefanrichterhuber;
 
+import java.util.Map;
+
 import com.github.stefanrichterhuber.quickjs.QuickJSContext;
 import com.github.stefanrichterhuber.quickjs.QuickJSFunction;
 import com.github.stefanrichterhuber.quickjs.QuickJSRuntime;
@@ -10,31 +12,45 @@ import com.github.stefanrichterhuber.quickjs.QuickJSRuntime;
  */
 public class App {
 
+    @SuppressWarnings("unchecked")
     public static void main(String[] args) throws Exception {
         try (QuickJSRuntime runtime = new QuickJSRuntime();
                 QuickJSContext context = runtime.createContext()) {
 
             {
-                QuickJSFunction f = (QuickJSFunction) context.eval("let a = function() { return 'hello'; };\n a");
+                Map<String, Object> result = (Map<String, Object>) context
+                        .eval("({a: 'b', b: function() { return 'hello';} , c: {d: 'world'} })");
+                System.out.println(result);
+                QuickJSFunction f = (QuickJSFunction) result.get("b");
                 Object r0 = f.call();
-                Object r1 = f.call();
-                System.out.println(r1);
+                System.out.println(r0);
+
             }
 
-            {
-                QuickJSFunction f = (QuickJSFunction) context.eval("let b = function(c) { return 'hello ' + c; };\n b");
-                Object r0 = f.call("world");
-                Object r1 = f.call("all world");
-                System.out.println(r1);
-            }
+            // {
+            // QuickJSFunction f = (QuickJSFunction) context.eval("let a = function() {
+            // return 'hello'; };\n a");
+            // Object r0 = f.call();
+            // Object r1 = f.call();
+            // System.out.println(r1);
+            // }
 
-            {
-                QuickJSFunction f = (QuickJSFunction) context.eval("let e = function(f) { return 'hello ' + f; };\n e");
-                context.setGlobal("g", f);
-                Object r0 = context.eval("g('world')");
-                Object r1 = context.eval("g('all world')");
-                System.out.println(r1);
-            }
+            // {
+            // QuickJSFunction f = (QuickJSFunction) context.eval("let b = function(c) {
+            // return 'hello ' + c; };\n b");
+            // Object r0 = f.call("world");
+            // Object r1 = f.call("all world");
+            // System.out.println(r1);
+            // }
+
+            // {
+            // QuickJSFunction f = (QuickJSFunction) context.eval("let e = function(f) {
+            // return 'hello ' + f; };\n e");
+            // context.setGlobal("g", f);
+            // Object r0 = context.eval("g('world')");
+            // Object r1 = context.eval("g('all world')");
+            // System.out.println(r1);
+            // }
 
             // {
             // context.setGlobal("m",

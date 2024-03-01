@@ -81,7 +81,7 @@ public class QuickJSContext implements AutoCloseable {
      * @param name  Name of the variable
      * @param value Value of the variable
      */
-    public void setGlobal(String name, BigInteger value) {
+    private void setGlobal(String name, BigInteger value) {
         // FIXME currently not supported by rquickjs
         this.setGlobal(getContextPointer(), name, value);
     }
@@ -92,7 +92,7 @@ public class QuickJSContext implements AutoCloseable {
      * @param name  Name of the variable
      * @param value Value of the variable
      */
-    public void setGlobal(String name, long value) {
+    private void setGlobal(String name, long value) {
         // FIXME currently not supported by rquickjs
         this.setGlobal(getContextPointer(), name, value);
     }
@@ -133,7 +133,7 @@ public class QuickJSContext implements AutoCloseable {
      * @param name  Name of the variable
      * @param value Value of the variable
      */
-    public void setGlobal(String name, BigDecimal value) {
+    private void setGlobal(String name, BigDecimal value) {
         // TODO rquickjs currently does not support BigDecimal directly
         this.setGlobal(getContextPointer(), name, value);
     }

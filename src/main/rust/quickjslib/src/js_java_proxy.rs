@@ -45,18 +45,39 @@ impl<'js, 'vm, 'r> JSJavaProxy<'js> {
             return Some(result);
         } else if self.value.is_object() {
             // FIXME convert to map instead
-            println!("JS value is an object");
+            println!("JS value is an object -> convert to java.util.HashMap");
 
-            let ctx = self.value.ctx();
-            let value: String = ctx
-                .json_stringify(&self.value)
-                .unwrap()
-                .unwrap()
-                .get()
-                .unwrap();
-            let object = env.new_string(value).unwrap().into();
+            let obj = self.value.as_object().unwrap();
 
-            return Some(object);
+            let hash_map_class = env
+                .find_class("java/util/HashMap")
+                .expect("Failed to load the target class");
+
+            let hash_map = env.new_object(hash_map_class, "()V", &[]).unwrap();
+
+            // TODO cache method id for better performance
+            for v in obj.keys() {
+                let key: String = v.unwrap();
+                let k = env.new_string(&key).unwrap();
+                let value: JSJavaProxy = obj.get(key.as_str()).unwrap();
+                let value = value.into_jobject(env);
+
+                println!("    Add key: {} to map", key);
+
+                if let Some(v) = value {
+                    env.call_method(
+                        &hash_map,
+                        "put",
+                        "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;",
+                        &[
+                            jni::objects::JValueGen::Object(&k),
+                            jni::objects::JValueGen::Object(&v),
+                        ],
+                    )
+                    .unwrap();
+                }
+            }
+            return Some(hash_map);
         } else if self.value.is_float() {
             println!("JS value is a float");
 
