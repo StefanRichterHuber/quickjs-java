@@ -15,7 +15,7 @@ public class QuickJSContext implements Closeable {
 
     private native void setGlobal(long ptr, String name, String value);
 
-    private native void setGlobal(long ptr, String name, Function<Object, String> f);
+    private native void setGlobal(long ptr, String name, Function<Object, Object> f);
 
     private native Object eval(long ptr, String script);
 
@@ -69,7 +69,7 @@ public class QuickJSContext implements Closeable {
      * @param name  Name of the function
      * @param value Value of the function
      */
-    public void setGlobal(String name, Function<Object, String> f) {
+    public void setGlobal(String name, Function<Object, Object> f) {
         this.setGlobal(getContextPointer(), name, f);
     }
 

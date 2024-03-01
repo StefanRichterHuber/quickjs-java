@@ -17,3 +17,4 @@ crate-type = ["cdylib"]
 [dependencies]
 rquickjs = "0.5.1"
 jni = "0.21.1"
+log = "0.4"

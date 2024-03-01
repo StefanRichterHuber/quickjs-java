@@ -12,9 +12,16 @@ impl<'js> FromJs<'js> for JSJavaProxy<'js> {
 }
 
 impl<'js, 'vm, 'r> JSJavaProxy<'js> {
+    pub fn new(value: Value<'js>) -> Self {
+        JSJavaProxy { value }
+    }
+
     // Converts the stored JS value to an Java object
     pub fn into_jobject(self, env: &mut JNIEnv<'vm>) -> Option<JObject<'vm>> {
-        if self.value.is_function() {
+        if self.value.is_null() || self.value.is_undefined() {
+            println!("JS value is null or undefined -> return null");
+            return Some(JObject::null());
+        } else if self.value.is_function() {
             println!("JS value is a function -> return not possible");
             return Some(JObject::null());
         } else if self.value.is_object() {

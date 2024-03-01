@@ -1,3 +1,6 @@
+use std::rc::Rc;
+
+use crate::java_js_proxy::ProxiedJavaValue;
 use crate::js_java_proxy::JSJavaProxy;
 use crate::runtime::{ptr_to_runtime, runtime_to_ptr};
 use jni::{
@@ -7,7 +10,6 @@ use jni::{
     JNIEnv,
 };
 use rquickjs::{Context, Function, Value};
-use std::rc::Rc;
 
 // ----------------------------------------------------------------------------------------
 
@@ -170,8 +172,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
     let f = move |msg: Value| {
         let mut env = vm.get_env().unwrap();
 
-        let param = JSJavaProxy { value: msg }.into_jobject(&mut env).unwrap();
-
+        let param = JSJavaProxy::new(msg).into_jobject(&mut env).unwrap();
         let call_result: errors::Result<JValueGen<JObject<'_>>> = env.call_method(
             target.as_ref(),
             "apply",
@@ -179,37 +180,15 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
             &[jni::objects::JValueGen::Object(&param)],
         );
 
-        // CHecks if there was an exception, if yes clear it and print the error message
-        match env.exception_check() {
-            Ok(exception_occured) => {
-                if exception_occured {
-                    match env.exception_occurred() {
-                        Ok(throwable) => {
-                            // @see https://stackoverflow.com/questions/27072459/how-to-get-the-message-from-a-java-exception-caught-in-jni
-                            // Seems to be necessary, otherwise fetching the message fails
-                            env.exception_clear().unwrap();
+        let result = if env.exception_check().unwrap() {
+            let exception = env.exception_occurred().unwrap();
+            ProxiedJavaValue::from_throwable(&mut env, exception)
+        } else {
+            let result = call_result.unwrap().l().unwrap();
+            ProxiedJavaValue::from_object(&mut env, result)
+        };
 
-                            let message = env.call_method(
-                                &throwable,
-                                "getMessage",
-                                "()Ljava/lang/String;",
-                                &[],
-                            );
-
-                            let str: JString = message.unwrap().l().unwrap().into();
-                            let error_msg: String = env.get_string(&str).unwrap().into();
-                            println!("Error during invocation {}", error_msg);
-                        }
-                        Err(_) => {} // No exception occurred. Do nothing.
-                    };
-                }
-            }
-            Err(_) => {}
-        }
-
-        let str: JString = call_result.unwrap().l().unwrap().into();
-        let plain: String = env.get_string(&str).unwrap().into();
-        plain
+        result
     };
 
     let _r = context.with(|ctx| {

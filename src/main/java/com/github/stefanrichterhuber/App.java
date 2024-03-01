@@ -1,6 +1,7 @@
 package com.github.stefanrichterhuber;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 
 import com.github.stefanrichterhuber.quickjs.QuickJSContext;
 import com.github.stefanrichterhuber.quickjs.QuickJSRuntime;
@@ -15,59 +16,22 @@ public class App {
         try (QuickJSRuntime runtime = new QuickJSRuntime();
                 QuickJSContext context = runtime.createContext()) {
 
-            context.setGlobal("a", "Hello");
-            context.setGlobal("b", "World");
-            context.setGlobal("f", v -> v.toString().repeat(3));
-            context.setGlobal("fx", f -> {
-                System.out.println("Function fx called");
-                return "hello ".repeat(3);
-            });
-            {
-                Object result = context.eval("f('Hello ')");
-                System.out.println(result);
-            }
-            {
-                Object result = context.eval("fx(true)");
-                System.out.println(result);
-            }
-            {
-                Object result = context.eval("let f = function() {\n" + //
-                        "    return a +b ;\n" + //
-                        "  }; f");
+            context.setGlobal("fa", v -> true);
+            context.setGlobal("fb", v -> 3.23d);
+            context.setGlobal("fc", v -> 3.23f);
+            context.setGlobal("fd", v -> "Hello");
+            context.setGlobal("fe", v -> 34);
+            context.setGlobal("ff", v -> 34l);
+            context.setGlobal("fg", v -> new BigDecimal("123"));
 
-                System.out.println(result);
+            System.out.println("Result from call: " + context.eval("fa(12)"));
 
-            }
-            {
-                Object result = context.eval("({a: 'b'})");
-
-                System.out.println(result);
-
-            }
-            {
-                Object result = context.eval("1 + 2");
-
-                System.out.println(result);
-
-            }
-            {
-                Object result = context.eval("1.2 +  2.3 * Math.PI");
-
-                System.out.println(result);
-
-            }
-            {
-                Object result = context.eval("a + ' ' + b");
-
-                System.out.println(result);
-
-            }
-            {
-                Object r1 = context.eval("1 == 2");
-                Object r2 = context.eval("1 == 1");
-
-                System.out.println(r1 + " " + r2);
-            }
+            System.out.println("Result from call: " + context.eval("fb(true)"));
+            System.out.println("Result from call: " + context.eval("fc(12.123323)"));
+            System.out.println("Result from call: " + context.eval("fd('a')"));
+            System.out.println("Result from call: " + context.eval("fe('a')"));
+            System.out.println("Result from call: " + context.eval("ff('a')"));
+            System.out.println("Result from call: " + context.eval("fg('a')"));
 
         }
     }
