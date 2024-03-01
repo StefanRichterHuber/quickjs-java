@@ -6,7 +6,7 @@ use crate::runtime::{ptr_to_runtime, runtime_to_ptr};
 use jni::{
     errors,
     objects::{JObject, JString, JValueGen},
-    sys::{jint, jlong},
+    sys::jlong,
     JNIEnv,
 };
 use rquickjs::{Context, Function, Value};
@@ -57,61 +57,27 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
     drop(context);
 }
 
-/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.setGlobal(long, String, int)
+/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.setGlobal(long, String, Object)
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext_setGlobal__JLjava_lang_String_2I<
+pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext_setGlobal__JLjava_lang_String_2Ljava_lang_Object_2<
     'a,
 >(
     mut _env: JNIEnv<'a>,
     _obj: JObject<'a>,
     context_ptr: jlong,
     key: JString<'a>,
-    value: jint,
+    value: JObject<'a>,
 ) {
     let context = ptr_to_context(context_ptr);
     let key_string: String = _env
         .get_string(&key)
         .expect("Couldn't get java string!")
         .into();
+    let value = ProxiedJavaValue::from_object(&mut _env, value);
 
     let _r = context.with(|ctx| {
         let globals = ctx.globals();
         globals.set(&key_string, value).unwrap();
-
-        println!("Set global [int] var {} = {}", key_string, value);
-    });
-
-    // Prevents dropping the context
-    _ = context_to_ptr(context);
-}
-
-/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.setGlobal(long, String, String)
-#[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext_setGlobal__JLjava_lang_String_2Ljava_lang_String_2<
-    'a,
->(
-    mut _env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-    context_ptr: jlong,
-    key: JString<'a>,
-    value: JString<'a>,
-) {
-    let context = ptr_to_context(context_ptr);
-    let key_string: String = _env
-        .get_string(&key)
-        .expect("Couldn't get java string!")
-        .into();
-
-    let value_string: String = _env
-        .get_string(&value)
-        .expect("Couldn't get java string!")
-        .into();
-
-    let _r = context.with(|ctx| {
-        let globals = ctx.globals();
-        globals.set(&key_string, &value_string).unwrap();
-
-        println!("Set global [string] var {} = {}", key_string, value_string);
     });
 
     // Prevents dropping the context
