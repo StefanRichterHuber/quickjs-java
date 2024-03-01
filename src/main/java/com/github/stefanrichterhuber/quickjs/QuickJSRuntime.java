@@ -1,13 +1,10 @@
 package com.github.stefanrichterhuber.quickjs;
 
-import java.io.Closeable;
-import java.io.IOException;
-
 import com.github.stefanrichterhuber.App;
 
 import io.questdb.jar.jni.JarJniLoader;
 
-public class QuickJSRuntime implements Closeable {
+public class QuickJSRuntime implements AutoCloseable {
     static {
         JarJniLoader.loadLib(
                 App.class,
@@ -36,7 +33,7 @@ public class QuickJSRuntime implements Closeable {
     }
 
     @Override
-    public void close() throws IOException {
+    public void close() throws Exception {
         if (ptr != 0) {
             closeRuntime(ptr);
             ptr = 0;

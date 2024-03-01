@@ -1,7 +1,5 @@
 package com.github.stefanrichterhuber;
 
-import java.io.IOException;
-
 import com.github.stefanrichterhuber.quickjs.QuickJSContext;
 import com.github.stefanrichterhuber.quickjs.QuickJSFunction;
 import com.github.stefanrichterhuber.quickjs.QuickJSRuntime;
@@ -12,13 +10,14 @@ import com.github.stefanrichterhuber.quickjs.QuickJSRuntime;
  */
 public class App {
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws Exception {
         try (QuickJSRuntime runtime = new QuickJSRuntime();
                 QuickJSContext context = runtime.createContext()) {
 
             {
                 QuickJSFunction f = (QuickJSFunction) context.eval("let a = function() { return 'hello'; };\n a");
                 Object result = f.call();
+                Object r1 = f.call();
                 System.out.println(result);
             }
 

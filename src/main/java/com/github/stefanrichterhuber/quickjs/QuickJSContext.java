@@ -1,16 +1,17 @@
 package com.github.stefanrichterhuber.quickjs;
 
-import java.io.Closeable;
-import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public class QuickJSContext implements Closeable {
+public class QuickJSContext implements AutoCloseable {
     private long ptr;
 
     private native long createContext(long runtimePtr);
@@ -21,9 +22,18 @@ public class QuickJSContext implements Closeable {
 
     private native Object eval(long ptr, String script);
 
+    /**
+     * Keep a reference to all functions received to prevent memory leaks which
+     * results in errors when closing the context
+     */
+    private final Set<AutoCloseable> dependedResources = new HashSet<>();
+
     @Override
-    public void close() throws IOException {
+    public void close() throws Exception {
         if (ptr != 0) {
+            for (AutoCloseable f : dependedResources) {
+                f.close();
+            }
             closeContext(ptr);
             ptr = 0;
         }
@@ -175,6 +185,26 @@ public class QuickJSContext implements Closeable {
      * @return Result from the script
      */
     public Object eval(String script) {
-        return this.eval(getContextPointer(), script);
+        final Object result = this.eval(getContextPointer(), script);
+        checkForDependendResources(result);
+        return result;
+    }
+
+    // Checks for context dependend resources like QuickJSFunction and add them to
+    // the clean up list
+    void checkForDependendResources(Object result) {
+        if (result instanceof QuickJSFunction) {
+            var f = (QuickJSFunction) result;
+            dependedResources.add(f);
+            f.setCtx(this);
+        }
+        if (result instanceof Collection) {
+            for (Object o : (Collection<?>) result) {
+                checkForDependendResources(o);
+            }
+        }
+        if (result instanceof Map) {
+            checkForDependendResources(((Map<?, ?>) result).values());
+        }
     }
 }
