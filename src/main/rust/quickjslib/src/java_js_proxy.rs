@@ -67,8 +67,38 @@ impl ProxiedJavaValue {
         let bifunction_class = env
             .find_class("java/util/function/BiFunction")
             .expect("Failed to load the target class");
+        let consumer_class = env
+            .find_class("java/util/function/Consumer")
+            .expect("Failed to load the target class");
 
-        if env.is_instance_of(&obj, bifunction_class).unwrap() {
+        if env.is_instance_of(&obj, consumer_class).unwrap() {
+            let target = Rc::new(env.new_global_ref(obj).unwrap());
+            // https://github.com/jni-rs/jni-rs/issues/488#issuecomment-1699852154
+            let vm = env.get_java_vm().unwrap();
+
+            let f = move |v1: Value| {
+                let mut env = vm.get_env().unwrap();
+
+                let p1 = JSJavaProxy::new(v1).into_jobject(&mut env).unwrap();
+                let _call_result: errors::Result<JValueGen<JObject<'_>>> = env.call_method(
+                    target.as_ref(),
+                    "accept",
+                    "(Ljava/lang/Object;)V",
+                    &[jni::objects::JValueGen::Object(&p1)],
+                );
+
+                let result = if env.exception_check().unwrap() {
+                    let exception = env.exception_occurred().unwrap();
+                    ProxiedJavaValue::from_throwable(&mut env, exception)
+                } else {
+                    ProxiedJavaValue::from_null()
+                };
+
+                result
+            };
+            println!("Java value is a Consumer<Object>");
+            ProxiedJavaValue::FUNCTION(Box::new(f))
+        } else if env.is_instance_of(&obj, bifunction_class).unwrap() {
             let target = Rc::new(env.new_global_ref(obj).unwrap());
             // https://github.com/jni-rs/jni-rs/issues/488#issuecomment-1699852154
             let vm = env.get_java_vm().unwrap();

@@ -19,10 +19,14 @@ public class App {
                 context.setGlobal("fa", () -> "Hello");
                 context.setGlobal("fb", a -> a);
                 context.setGlobal("fc", (a, b) -> a.toString() + b.toString());
+                context.setGlobal("fd", a -> {
+                    System.out.println(a);
+                });
 
                 System.out.println("Result from call fa: " + context.eval("fa()"));
                 System.out.println("Result from call fb: " + context.eval("fb('Hello')"));
                 System.out.println("Result from call fc: " + context.eval("fc('Hello', 'World')"));
+                System.out.println("Result from call fd: " + context.eval("fd('Hello')"));
             }
 
             // {

@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.function.BiFunction;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -143,6 +144,16 @@ public class QuickJSContext implements Closeable {
      * @param value Value of the function
      */
     public void setGlobal(String name, BiFunction<Object, Object, Object> f) {
+        this.setGlobal(getContextPointer(), name, f);
+    }
+
+    /**
+     * Adds a global function to the context.
+     * 
+     * @param name  Name of the function
+     * @param value Value of the function
+     */
+    public void setGlobal(String name, Consumer<Object> f) {
         this.setGlobal(getContextPointer(), name, f);
     }
 
