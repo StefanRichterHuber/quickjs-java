@@ -2,7 +2,12 @@ package com.github.stefanrichterhuber.quickjs;
 
 import java.util.Objects;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 public class QuickJSFunction implements AutoCloseable {
+    private static final Logger LOGGER = LogManager.getLogger();
+
     long ptr;
 
     private QuickJSContext ctx;
@@ -19,6 +24,7 @@ public class QuickJSFunction implements AutoCloseable {
     @Override
     public void close() throws Exception {
         if (this.ptr != 0) {
+            LOGGER.debug("Close QuickJSFunction " + ptr);
             closeFunction(ptr);
             ptr = 0;
         }
@@ -30,7 +36,7 @@ public class QuickJSFunction implements AutoCloseable {
             if (this.ctx != null) {
                 ctx.checkForDependendResources(result);
             } else {
-                throw new IllegalStateException("QuickJSFunction not bound to QuickJSContext!");
+                LOGGER.warn("QuickJSFunction not bound to QuickJSContext - might result in memory leaks");
             }
 
             return result;
