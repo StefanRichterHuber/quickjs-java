@@ -3,7 +3,7 @@ package com.github.stefanrichterhuber.quickjs;
 import java.util.Objects;
 
 public class QuickJSFunction implements AutoCloseable {
-    private long ptr;
+    long ptr;
 
     private QuickJSContext ctx;
 
@@ -11,6 +11,7 @@ public class QuickJSFunction implements AutoCloseable {
 
     private native Object callFunction(long ptr, Object... args);
 
+    // TODO add name of the function from js?
     public QuickJSFunction(long ptr) {
         this.ptr = ptr;
     }

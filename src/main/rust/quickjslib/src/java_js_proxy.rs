@@ -9,6 +9,7 @@ use jni::{
 use log::info;
 use rquickjs::{BigInt, Function, IntoJs, Value};
 
+use crate::foreign_function::{function_to_ptr, ptr_to_function};
 use crate::js_java_proxy::JSJavaProxy;
 
 pub enum ProxiedJavaValue {
@@ -24,6 +25,7 @@ pub enum ProxiedJavaValue {
     BIFUNCTION(Box<dyn Fn(Value<'_>, Value<'_>) -> ProxiedJavaValue>),
     SUPPLIER(Box<dyn Fn() -> ProxiedJavaValue>),
     MAP(Vec<(String, ProxiedJavaValue)>),
+    JSFUNCTION(i64),
 }
 
 impl ProxiedJavaValue {
@@ -74,8 +76,17 @@ impl ProxiedJavaValue {
         let map_class = env
             .find_class("java/util/Map")
             .expect("Failed to load the target class");
+        let quickjs_function_class = env
+            .find_class("com/github/stefanrichterhuber/quickjs/QuickJSFunction")
+            .expect("Failed to load the target class");
 
-        if env.is_instance_of(&obj, map_class).unwrap() {
+        if env.is_instance_of(&obj, quickjs_function_class).unwrap() {
+            println!("Java value is a QuickJSFunction -> unwrap to JS function");
+
+            let ptr_result = env.get_field(&obj, "ptr", "J");
+            let ptr = ptr_result.unwrap().j().unwrap();
+            ProxiedJavaValue::JSFUNCTION(ptr)
+        } else if env.is_instance_of(&obj, map_class).unwrap() {
             println!("Java value is a Map<Object, Object>");
             // Result of the operation -> a list of key-value pairs
             let mut items: Vec<(String, ProxiedJavaValue)> = vec![];
@@ -346,6 +357,17 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
                         .unwrap();
                 }
                 let s = Value::from_object(obj);
+                Ok(s)
+            }
+            ProxiedJavaValue::JSFUNCTION(ptr) => {
+                let func = ptr_to_function(ptr);
+
+                let f = func.as_raw();
+
+                let s: Value<'_> = unsafe { Value::from_raw(ctx.clone(), f) };
+
+                // Prevents dropping the function
+                _ = function_to_ptr(func);
                 Ok(s)
             }
         };

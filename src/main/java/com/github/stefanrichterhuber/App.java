@@ -28,6 +28,14 @@ public class App {
                 System.out.println(r1);
             }
 
+            {
+                QuickJSFunction f = (QuickJSFunction) context.eval("let e = function(f) { return 'hello ' + f; };\n e");
+                context.setGlobal("g", f);
+                Object r0 = context.eval("g('world')");
+                Object r1 = context.eval("g('all world')");
+                System.out.println(r1);
+            }
+
             // {
             // context.setGlobal("m",
             // Map.of("f1", (Supplier<String>) () -> "no mans sky", "hello", "world"));

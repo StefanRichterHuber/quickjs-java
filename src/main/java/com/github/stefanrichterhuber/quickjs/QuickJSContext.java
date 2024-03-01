@@ -154,6 +154,16 @@ public class QuickJSContext implements AutoCloseable {
      * @param name  Name of the function
      * @param value Value of the function
      */
+    public void setGlobal(String name, QuickJSFunction f) {
+        this.setGlobal(getContextPointer(), name, f);
+    }
+
+    /**
+     * Adds a global function to the context.
+     * 
+     * @param name  Name of the function
+     * @param value Value of the function
+     */
     public void setGlobal(String name, Supplier<Object> f) {
         this.setGlobal(getContextPointer(), name, f);
     }
