@@ -1,4 +1,4 @@
-use jni::{objects::JObject, JNIEnv};
+use jni::{objects::JObject, sys::jlong, JNIEnv};
 use rquickjs::{FromJs, Value};
 /// This proxy assist in converting JS values to Java values
 pub struct JSJavaProxy<'js> {
@@ -22,9 +22,29 @@ impl<'js, 'vm, 'r> JSJavaProxy<'js> {
             println!("JS value is null or undefined -> return null");
             return Some(JObject::null());
         } else if self.value.is_function() {
-            println!("JS value is a function -> return not possible");
-            return Some(JObject::null());
+            println!("JS value is a function -> convert to com.github.stefanrichterhuber.quickjs.QuickJSFunction");
+
+            let f = self.value.as_function().unwrap();
+            let f = f.clone();
+
+            let func = Box::new(f);
+            let ptr = Box::into_raw(func) as jlong;
+
+            let js_function_class = env
+                .find_class("com/github/stefanrichterhuber/quickjs/QuickJSFunction")
+                .expect("Failed to load the target class");
+
+            let result = env
+                .new_object(
+                    js_function_class,
+                    "(J)V",
+                    &[jni::objects::JValueGen::Long(ptr)],
+                )
+                .unwrap();
+
+            return Some(result);
         } else if self.value.is_object() {
+            // FIXME convert to map instead
             println!("JS value is an object");
 
             let ctx = self.value.ctx();
