@@ -54,6 +54,51 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
     drop(context);
 }
 
+/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.getGlobal(long, String)
+#[no_mangle]
+pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext_getGlobal<'a>(
+    mut _env: JNIEnv<'a>,
+    _obj: JObject<'a>,
+    context_ptr: jlong,
+    key: JString<'a>,
+) -> JObject<'a> {
+    let context = ptr_to_context(context_ptr);
+    let key_string: String = _env
+        .get_string(&key)
+        .expect("Couldn't get java string!")
+        .into();
+
+    let result = context.with(|ctx| {
+        let globals = ctx.globals();
+        let s: Result<JSJavaProxy, _> = globals.get(&key_string);
+
+        match s {
+            Ok(s) => s.into_jobject(&mut _env).unwrap(),
+            Err(e) => {
+                match e {
+                    Error::Exception => {
+                        let catch = ctx.catch();
+                        let execp = catch.as_exception().unwrap();
+                        let msg = format!("{:?}", execp);
+
+                        _env.throw_new("java/lang/Exception", msg).unwrap();
+                    }
+                    _ => {
+                        _env.throw_new("java/lang/Exception", e.to_string())
+                            .unwrap();
+                    }
+                }
+                JObject::null()
+            }
+        }
+    });
+
+    // Prevents dropping the context
+    _ = context_to_ptr(context);
+
+    result
+}
+
 /// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.setGlobal(long, String, Object)
 #[no_mangle]
 pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext_setGlobal__JLjava_lang_String_2Ljava_lang_Object_2<

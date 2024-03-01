@@ -20,6 +20,8 @@ public class QuickJSContext implements AutoCloseable {
 
     private native void setGlobal(long ptr, String name, Object value);
 
+    private native Object getGlobal(long ptr, String name);
+
     private native Object eval(long ptr, String script);
 
     /**
@@ -53,6 +55,17 @@ public class QuickJSContext implements AutoCloseable {
             throw new IllegalStateException("QuickJSContext is closed");
         }
         return this.ptr;
+    }
+
+    /**
+     * Returns the value of the global variable with the given name.
+     * 
+     * @param name Name of the variable
+     */
+    public Object getGlobal(String name) {
+        Object result = this.getGlobal(getContextPointer(), name);
+        this.checkForDependendResources(result);
+        return result;
     }
 
     /**
