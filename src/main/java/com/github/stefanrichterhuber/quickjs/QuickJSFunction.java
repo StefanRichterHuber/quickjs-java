@@ -22,7 +22,7 @@ public class QuickJSFunction implements AutoCloseable {
     }
 
     @Override
-    public void close() throws Exception {
+    public void close() throws RuntimeException {
         if (this.ptr != 0) {
             LOGGER.debug("Close QuickJSFunction " + ptr);
             closeFunction(ptr);

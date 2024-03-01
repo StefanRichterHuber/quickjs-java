@@ -1,13 +1,11 @@
 package com.github.stefanrichterhuber.quickjs;
 
-import com.github.stefanrichterhuber.App;
-
 import io.questdb.jar.jni.JarJniLoader;
 
 public class QuickJSRuntime implements AutoCloseable {
     static {
         JarJniLoader.loadLib(
-                App.class,
+                QuickJSRuntime.class,
                 // A platform-specific path is automatically suffixed to path below.
                 "/libs",
                 // The "lib" prefix and ".so|.dynlib|.dll" suffix are added automatically as
@@ -33,7 +31,7 @@ public class QuickJSRuntime implements AutoCloseable {
     }
 
     @Override
-    public void close() throws Exception {
+    public void close() throws RuntimeException {
         if (ptr != 0) {
             closeRuntime(ptr);
             ptr = 0;

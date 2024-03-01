@@ -157,7 +157,7 @@ public class QuickJSContext implements AutoCloseable {
      * @param name  Name of the function
      * @param value Value of the function
      */
-    public void setGlobal(String name, Function<Object, Object> f) {
+    public void setGlobal(String name, Function<?, ?> f) {
         this.setGlobal(getContextPointer(), name, f);
     }
 
@@ -177,7 +177,7 @@ public class QuickJSContext implements AutoCloseable {
      * @param name  Name of the function
      * @param value Value of the function
      */
-    public void setGlobal(String name, Supplier<Object> f) {
+    public void setGlobal(String name, Supplier<?> f) {
         this.setGlobal(getContextPointer(), name, f);
     }
 
@@ -187,7 +187,7 @@ public class QuickJSContext implements AutoCloseable {
      * @param name  Name of the function
      * @param value Value of the function
      */
-    public void setGlobal(String name, BiFunction<Object, Object, Object> f) {
+    public void setGlobal(String name, BiFunction<?, ?, ?> f) {
         this.setGlobal(getContextPointer(), name, f);
     }
 
@@ -197,7 +197,7 @@ public class QuickJSContext implements AutoCloseable {
      * @param name  Name of the function
      * @param value Value of the function
      */
-    public void setGlobal(String name, Consumer<Object> f) {
+    public void setGlobal(String name, Consumer<?> f) {
         this.setGlobal(getContextPointer(), name, f);
     }
 
