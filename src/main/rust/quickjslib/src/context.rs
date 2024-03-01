@@ -9,7 +9,7 @@ use jni::{
     sys::jlong,
     JNIEnv,
 };
-use rquickjs::{Context, Function, Value};
+use rquickjs::{Context, Error, Function, Value};
 
 // ----------------------------------------------------------------------------------------
 
@@ -77,7 +77,25 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
 
     let _r = context.with(|ctx| {
         let globals = ctx.globals();
-        globals.set(&key_string, value).unwrap();
+        let result = globals.set(&key_string, value);
+
+        if let Err(Error::Exception) = result {
+            println!("QuickJS Exception occured: {}", result.err().unwrap());
+
+            let catch = ctx.catch();
+            let execp = catch.as_exception().unwrap();
+            let msg = format!("JS Exception: {:?}", execp);
+
+            _env.throw_new("java/lang/Exception", msg).unwrap();
+        } else {
+            match result {
+                Ok(_) => {}
+                Err(e) => {
+                    _env.throw_new("java/lang/Exception", e.to_string())
+                        .unwrap();
+                }
+            };
+        }
     });
 
     // Prevents dropping the context

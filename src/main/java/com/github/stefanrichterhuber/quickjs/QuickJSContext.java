@@ -3,6 +3,7 @@ package com.github.stefanrichterhuber.quickjs;
 import java.io.Closeable;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.function.Function;
 
 public class QuickJSContext implements Closeable {
@@ -49,6 +50,16 @@ public class QuickJSContext implements Closeable {
      * @param value Value of the variable
      */
     public void setGlobal(String name, int value) {
+        this.setGlobal(getContextPointer(), name, value);
+    }
+
+    /**
+     * Adds a global variable to the context.
+     * 
+     * @param name  Name of the variable
+     * @param value Value of the variable
+     */
+    public void setGlobal(String name, BigInteger value) {
         this.setGlobal(getContextPointer(), name, value);
     }
 

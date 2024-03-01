@@ -4,7 +4,7 @@ use jni::{
     JNIEnv,
 };
 use log::info;
-use rquickjs::{IntoJs, Value};
+use rquickjs::{BigInt, IntoJs, Value};
 
 pub enum ProxiedJavaValue {
     THROWABLE(String),
@@ -13,6 +13,8 @@ pub enum ProxiedJavaValue {
     DOUBLE(f64),
     INT(i32),
     BOOL(bool),
+    BIGDECIMAL(String),
+    BIGINTEGER(i64),
 }
 
 impl ProxiedJavaValue {
@@ -42,8 +44,27 @@ impl ProxiedJavaValue {
         let bool_class = env
             .find_class("java/lang/Boolean")
             .expect("Failed to load the target class");
+        let bigdecimal_class = env
+            .find_class("java/math/BigDecimal")
+            .expect("Failed to load the target class");
+        let biginteger_class = env
+            .find_class("java/math/BigInteger")
+            .expect("Failed to load the target class");
 
-        if env.is_instance_of(&obj, double_class).unwrap()
+        if env.is_instance_of(&obj, biginteger_class).unwrap() {
+            // Convert big integer to string -> later on bag to JS big integer
+            let raw_value = env.call_method(&obj, "longValue", "()J", &[]);
+            let value = raw_value.unwrap().j().unwrap();
+            println!("Java value is a BigInteger: {}", value);
+            ProxiedJavaValue::BIGINTEGER(value)
+        } else if env.is_instance_of(&obj, bigdecimal_class).unwrap() {
+            // Convert big decimal to string -> later on bag to JS big decimal
+            let raw_value = env.call_method(&obj, "toString", "()Ljava/lang/String;", &[]);
+            let str: JString = raw_value.unwrap().l().unwrap().into();
+            let plain: String = env.get_string(&str).unwrap().into();
+            println!("Java value is a BigDecimal: {}", plain);
+            ProxiedJavaValue::BIGDECIMAL(plain)
+        } else if env.is_instance_of(&obj, double_class).unwrap()
             || env.is_instance_of(&obj, float_class).unwrap()
         {
             let raw_value = env.call_method(&obj, "doubleValue", "()D", &[]);
@@ -55,12 +76,15 @@ impl ProxiedJavaValue {
             let plain: String = env.get_string(&str).unwrap().into();
             println!("Java value is a string: {}", plain);
             ProxiedJavaValue::STRING(plain)
-        } else if env.is_instance_of(&obj, int_class).unwrap()
-            || env.is_instance_of(&obj, long_class).unwrap()
-        {
+        } else if env.is_instance_of(&obj, long_class).unwrap() {
+            let raw_value = env.call_method(&obj, "longValue", "()J", &[]);
+            let value = raw_value.unwrap().j().unwrap();
+            println!("Java value is an long: {}", value);
+            ProxiedJavaValue::BIGINTEGER(value)
+        } else if env.is_instance_of(&obj, int_class).unwrap() {
             let raw_value = env.call_method(&obj, "intValue", "()I", &[]);
             let value = raw_value.unwrap().i().unwrap();
-            println!("Java value is an int or long: {}", value);
+            println!("Java value is an int: {}", value);
             ProxiedJavaValue::INT(value)
         } else if env.is_instance_of(&obj, bool_class).unwrap() {
             let raw_value = env.call_method(&obj, "booleanValue", "()Z", &[]);
@@ -104,6 +128,16 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
             ProxiedJavaValue::DOUBLE(v) => Ok(Value::new_float(ctx.clone(), v)),
             ProxiedJavaValue::INT(v) => Ok(Value::new_int(ctx.clone(), v)),
             ProxiedJavaValue::BOOL(v) => Ok(Value::new_bool(ctx.clone(), v)),
+            ProxiedJavaValue::BIGDECIMAL(str) => {
+                // TODO fixme
+                let s: rquickjs::Result<Value> = ctx.eval(format!("new BigDecimal('{}')", str));
+                s
+            }
+            ProxiedJavaValue::BIGINTEGER(v) => {
+                let bi = BigInt::from_i64(ctx.clone(), v).unwrap();
+                let s = Value::from_big_int(bi);
+                Ok(s)
+            }
         };
         result
     }
