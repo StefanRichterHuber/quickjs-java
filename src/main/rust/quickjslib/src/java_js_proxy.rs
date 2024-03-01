@@ -130,7 +130,7 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
             ProxiedJavaValue::BOOL(v) => Ok(Value::new_bool(ctx.clone(), v)),
             ProxiedJavaValue::BIGDECIMAL(str) => {
                 // TODO fixme
-                let s: rquickjs::Result<Value> = ctx.eval(format!("new BigDecimal('{}')", str));
+                let s: rquickjs::Result<Value> = ctx.eval(format!("{}m", str));
                 s
             }
             ProxiedJavaValue::BIGINTEGER(v) => {

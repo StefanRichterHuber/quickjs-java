@@ -100,6 +100,7 @@ public class QuickJSContext implements Closeable {
      * @param value Value of the variable
      */
     public void setGlobal(String name, BigDecimal value) {
+        // TODO rquickjs currently does not support BigDecimal directly
         this.setGlobal(getContextPointer(), name, value);
     }
 

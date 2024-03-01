@@ -77,27 +77,25 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
 
     let _r = context.with(|ctx| {
         let globals = ctx.globals();
-        let result = globals.set(&key_string, value);
+        let s = globals.set(&key_string, value);
 
-        if let Err(Error::Exception) = result {
-            println!("QuickJS Exception occured: {}", result.err().unwrap());
+        match s {
+            Ok(_) => {}
+            Err(e) => match e {
+                Error::Exception => {
+                    let catch = ctx.catch();
+                    let execp = catch.as_exception().unwrap();
+                    let msg = format!("{:?}", execp);
 
-            let catch = ctx.catch();
-            let execp = catch.as_exception().unwrap();
-            let msg = format!("JS Exception: {:?}", execp);
-
-            _env.throw_new("java/lang/Exception", msg).unwrap();
-        } else {
-            match result {
-                Ok(_) => {}
-                Err(e) => {
+                    _env.throw_new("java/lang/Exception", msg).unwrap();
+                }
+                _ => {
                     _env.throw_new("java/lang/Exception", e.to_string())
                         .unwrap();
                 }
-            };
+            },
         }
     });
-
     // Prevents dropping the context
     _ = context_to_ptr(context);
 }
@@ -118,11 +116,23 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
 
     let r = context.with(move |ctx| {
         let s: Result<JSJavaProxy, _> = ctx.eval(script_string);
+
         match s {
             Ok(s) => s.into_jobject(&mut _env).unwrap(),
             Err(e) => {
-                _env.throw_new("java/lang/Exception", e.to_string())
-                    .unwrap();
+                match e {
+                    Error::Exception => {
+                        let catch = ctx.catch();
+                        let execp = catch.as_exception().unwrap();
+                        let msg = format!("{:?}", execp);
+
+                        _env.throw_new("java/lang/Exception", msg).unwrap();
+                    }
+                    _ => {
+                        _env.throw_new("java/lang/Exception", e.to_string())
+                            .unwrap();
+                    }
+                }
                 JObject::null()
             }
         }
