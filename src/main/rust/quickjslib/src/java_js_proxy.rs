@@ -21,6 +21,8 @@ pub enum ProxiedJavaValue {
     BIGDECIMAL(String),
     BIGINTEGER(i64),
     FUNCTION(Box<dyn Fn(Value<'_>) -> ProxiedJavaValue>),
+    BIFUNCTION(Box<dyn Fn(Value<'_>, Value<'_>) -> ProxiedJavaValue>),
+    SUPPLIER(Box<dyn Fn() -> ProxiedJavaValue>),
 }
 
 impl ProxiedJavaValue {
@@ -59,8 +61,69 @@ impl ProxiedJavaValue {
         let function_class = env
             .find_class("java/util/function/Function")
             .expect("Failed to load the target class");
+        let supplier_class = env
+            .find_class("java/util/function/Supplier")
+            .expect("Failed to load the target class");
+        let bifunction_class = env
+            .find_class("java/util/function/BiFunction")
+            .expect("Failed to load the target class");
 
-        if env.is_instance_of(&obj, function_class).unwrap() {
+        if env.is_instance_of(&obj, bifunction_class).unwrap() {
+            let target = Rc::new(env.new_global_ref(obj).unwrap());
+            // https://github.com/jni-rs/jni-rs/issues/488#issuecomment-1699852154
+            let vm = env.get_java_vm().unwrap();
+
+            let f = move |v1: Value, v2: Value| {
+                let mut env = vm.get_env().unwrap();
+
+                let p1 = JSJavaProxy::new(v1).into_jobject(&mut env).unwrap();
+                let p2 = JSJavaProxy::new(v2).into_jobject(&mut env).unwrap();
+                let call_result: errors::Result<JValueGen<JObject<'_>>> = env.call_method(
+                    target.as_ref(),
+                    "apply",
+                    "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;",
+                    &[
+                        jni::objects::JValueGen::Object(&p1),
+                        jni::objects::JValueGen::Object(&p2),
+                    ],
+                );
+
+                let result = if env.exception_check().unwrap() {
+                    let exception = env.exception_occurred().unwrap();
+                    ProxiedJavaValue::from_throwable(&mut env, exception)
+                } else {
+                    let result = call_result.unwrap().l().unwrap();
+                    ProxiedJavaValue::from_object(&mut env, result)
+                };
+
+                result
+            };
+            println!("Java value is a BiFunction<Object, Object, Object>");
+            ProxiedJavaValue::BIFUNCTION(Box::new(f))
+        } else if env.is_instance_of(&obj, supplier_class).unwrap() {
+            let target = Rc::new(env.new_global_ref(obj).unwrap());
+            // https://github.com/jni-rs/jni-rs/issues/488#issuecomment-1699852154
+            let vm = env.get_java_vm().unwrap();
+
+            let f = move || {
+                let mut env = vm.get_env().unwrap();
+
+                let call_result: errors::Result<JValueGen<JObject<'_>>> =
+                    env.call_method(target.as_ref(), "get", "()Ljava/lang/Object;", &[]);
+
+                let result = if env.exception_check().unwrap() {
+                    let exception = env.exception_occurred().unwrap();
+                    ProxiedJavaValue::from_throwable(&mut env, exception)
+                } else {
+                    let result = call_result.unwrap().l().unwrap();
+                    ProxiedJavaValue::from_object(&mut env, result)
+                };
+
+                result
+            };
+            println!("Java value is a Supplier<Object>");
+            ProxiedJavaValue::SUPPLIER(Box::new(f))
+        } else if env.is_instance_of(&obj, function_class).unwrap() {
             let target = Rc::new(env.new_global_ref(obj).unwrap());
             // https://github.com/jni-rs/jni-rs/issues/488#issuecomment-1699852154
             let vm = env.get_java_vm().unwrap();
@@ -177,6 +240,16 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
                 Ok(s)
             }
             ProxiedJavaValue::FUNCTION(f) => {
+                let func = Function::new(ctx.clone(), f).unwrap();
+                let s = Value::from_function(func);
+                Ok(s)
+            }
+            ProxiedJavaValue::SUPPLIER(f) => {
+                let func = Function::new(ctx.clone(), f).unwrap();
+                let s = Value::from_function(func);
+                Ok(s)
+            }
+            ProxiedJavaValue::BIFUNCTION(f) => {
                 let func = Function::new(ctx.clone(), f).unwrap();
                 let s = Value::from_function(func);
                 Ok(s)
