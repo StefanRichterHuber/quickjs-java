@@ -16,9 +16,16 @@ public class App {
 
             {
                 QuickJSFunction f = (QuickJSFunction) context.eval("let a = function() { return 'hello'; };\n a");
-                Object result = f.call();
+                Object r0 = f.call();
                 Object r1 = f.call();
-                System.out.println(result);
+                System.out.println(r1);
+            }
+
+            {
+                QuickJSFunction f = (QuickJSFunction) context.eval("let b = function(c) { return 'hello ' + c; };\n b");
+                Object r0 = f.call("world");
+                Object r1 = f.call("all world");
+                System.out.println(r1);
             }
 
             // {

@@ -1,11 +1,11 @@
 use jni::{
-    objects::JObject,
-    sys::{jlong, jobjectArray},
+    objects::{JObject, JObjectArray},
+    sys::jlong,
     JNIEnv,
 };
-use rquickjs::Function;
+use rquickjs::{function::Args, Function};
 
-use crate::js_java_proxy::JSJavaProxy;
+use crate::{java_js_proxy, js_java_proxy::JSJavaProxy};
 
 /// Implementation com.github.stefanrichterhuber.quickjs.QuickJSFunction.closeFunction(long ptr)
 #[no_mangle]
@@ -39,13 +39,31 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSFunctio
     mut _env: JNIEnv<'a>,
     _obj: JObject<'a>,
     runtime_ptr: jlong,
-    _values: jobjectArray,
+    _values: JObjectArray,
 ) -> JObject<'a> {
     let func = ptr_to_function(runtime_ptr);
 
     let ctx = func.ctx();
-    // TODO evaluate values array
-    let s: Result<JSJavaProxy, _> = func.call(());
+
+    let args_len = _env.get_array_length(&_values).unwrap();
+
+    let s: Result<JSJavaProxy, _> = if args_len > 0 {
+        let mut args = Vec::with_capacity(args_len as usize);
+        for i in 0..args_len {
+            let arg = _env.get_object_array_element(&_values, i).unwrap();
+            let arg_js = java_js_proxy::ProxiedJavaValue::from_object(&mut _env, arg);
+            args.push(arg_js);
+        }
+
+        let mut args_js = Args::new(ctx.clone(), args.len());
+
+        for arg_js in args.into_iter() {
+            args_js.push_arg(arg_js).unwrap();
+        }
+        func.call_arg(args_js)
+    } else {
+        func.call(())
+    };
 
     let result = match s {
         Ok(s) => s.into_jobject(&mut _env).unwrap(),
