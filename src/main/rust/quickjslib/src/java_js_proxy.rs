@@ -7,7 +7,7 @@ use jni::{
     JNIEnv,
 };
 use log::info;
-use rquickjs::{BigInt, Function, IntoJs, Value};
+use rquickjs::{BigInt, Exception, Function, IntoJs, Value};
 
 use crate::foreign_function::{function_to_ptr, ptr_to_function};
 use crate::js_java_proxy::JSJavaProxy;
@@ -337,6 +337,8 @@ impl ProxiedJavaValue {
             "Map Java exception to JS exception",
         );
 
+        runtime::log(runtime::LogLevel::WARN, &error_msg);
+
         ProxiedJavaValue::THROWABLE(error_msg)
     }
 
@@ -349,8 +351,12 @@ impl ProxiedJavaValue {
 impl<'js> IntoJs<'js> for ProxiedJavaValue {
     fn into_js(self, ctx: &rquickjs::Ctx<'js>) -> rquickjs::Result<Value<'js>> {
         let result = match self {
-            // FIXME properly convert exception
-            ProxiedJavaValue::THROWABLE(_) => Ok(Value::new_null(ctx.clone())),
+            ProxiedJavaValue::THROWABLE(msg) => {
+                let exception = Exception::from_message(ctx.clone(), &msg).unwrap();
+
+                let v = Value::from_exception(exception);
+                Err(ctx.throw(v))
+            }
             ProxiedJavaValue::NULL => Ok(Value::new_null(ctx.clone())),
             ProxiedJavaValue::STRING(str) => Ok(Value::from_string(
                 rquickjs::String::from_str(ctx.clone(), str.as_str()).unwrap(),
