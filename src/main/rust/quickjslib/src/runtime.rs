@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use jni::{
     objects::{JObject, JValue},
     signature::ReturnType,
-    sys::jlong,
+    sys::{jint, jlong},
     JNIEnv,
 };
 use rquickjs::Runtime;
@@ -48,14 +48,16 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSRuntime
 struct LogContext {
     method_id: jni::objects::JStaticMethodID,
     vm: jni::JavaVM,
+    level: i32,
 }
 
 pub enum LogLevel {
-    TRACE = 0,
-    DEBUG = 1,
-    INFO = 2,
-    WARN = 3,
-    ERROR = 4,
+    TRACE = 1,
+    DEBUG = 2,
+    INFO = 3,
+    WARN = 4,
+    ERROR = 5,
+    FATAL = 6,
 }
 
 impl LogLevel {
@@ -66,6 +68,7 @@ impl LogLevel {
             LogLevel::INFO => "INFO".to_string(),
             LogLevel::WARN => "WARN".to_string(),
             LogLevel::ERROR => "ERROR".to_string(),
+            LogLevel::FATAL => "FATAL".to_string(),
         }
     }
 }
@@ -77,6 +80,7 @@ static LOG_CONTEXT: Mutex<Option<LogContext>> = Mutex::new(None);
 pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSRuntime_initLogging<'a>(
     mut _env: JNIEnv<'a>,
     _obj: JObject<'a>,
+    level: jint,
 ) {
     let log_id = _env
         .get_static_method_id(
@@ -91,12 +95,14 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSRuntime
     LOG_CONTEXT.lock().unwrap().replace(LogContext {
         method_id: log_id,
         vm,
+        level,
     });
 }
 
 /// Utility function called for logging. If configured, passes the logging to the java function. If not use println! as fallback.
 pub fn log(level: LogLevel, message: &str) {
     let mut log_context = LOG_CONTEXT.lock().unwrap();
+
     if log_context.is_none() {
         // No log context set -> fall back to println!
 
@@ -106,23 +112,27 @@ pub fn log(level: LogLevel, message: &str) {
 
         let log_context = log_context.as_mut().unwrap();
 
-        let method_id = log_context.method_id;
+        let target_level = log_context.level;
         let level_int = level as i32;
+        // Only do JVM call if message would be logged at all
+        if target_level != 0 && target_level <= level_int {
+            let method_id = log_context.method_id;
 
-        let mut env: JNIEnv<'_> = log_context.vm.get_env().unwrap();
-        let message_string = env.new_string(message).unwrap();
+            let mut env: JNIEnv<'_> = log_context.vm.get_env().unwrap();
+            let message_string = env.new_string(message).unwrap();
 
-        let _result = unsafe {
-            env.call_static_method_unchecked(
-                "com/github/stefanrichterhuber/quickjs/QuickJSRuntime",
-                method_id,
-                ReturnType::Primitive(jni::signature::Primitive::Void),
-                &[
-                    JValue::Int(level_int).as_jni(),
-                    JValue::Object(&message_string).as_jni(),
-                ],
-            )
+            let _result = unsafe {
+                env.call_static_method_unchecked(
+                    "com/github/stefanrichterhuber/quickjs/QuickJSRuntime",
+                    method_id,
+                    ReturnType::Primitive(jni::signature::Primitive::Void),
+                    &[
+                        JValue::Int(level_int).as_jni(),
+                        JValue::Object(&message_string).as_jni(),
+                    ],
+                )
+            }
+            .unwrap();
         }
-        .unwrap();
     }
 }

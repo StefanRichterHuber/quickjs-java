@@ -97,7 +97,7 @@ public class QuickJSContextTest {
                 context.setGlobal("d", v -> {
                     result.complete(v.toString());
                 });
-                Object v = context.eval("d('Hello')");
+                context.eval("d('Hello')");
                 assertEquals("Hello", result.join());
             }
         }
