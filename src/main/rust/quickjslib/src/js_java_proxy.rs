@@ -26,6 +26,38 @@ impl<'js, 'vm, 'r> JSJavaProxy<'js> {
         } else if self.value.is_undefined() {
             runtime::log(runtime::LogLevel::TRACE, "Map JS undefined to Java null");
             return Some(JObject::null());
+        } else if self.value.is_array() {
+            runtime::log(
+                runtime::LogLevel::TRACE,
+                "Map JS array to Java java.util.ArrayList",
+            );
+            let array = self.value.as_array().unwrap();
+            let len = array.len() as i32;
+
+            let list_class = env
+                .find_class("java/util/ArrayList")
+                .expect("Failed to load the target class");
+            let list = env
+                .new_object(list_class, "(I)V", &[jni::objects::JValueGen::Int(len)])
+                .unwrap();
+
+            for value in array.iter::<JSJavaProxy>() {
+                let value = value.unwrap();
+                let value = value.into_jobject(env);
+
+                // TODO cache method id for better performance
+                if let Some(v) = value {
+                    env.call_method(
+                        &list,
+                        "add",
+                        "(Ljava/lang/Object;)Z",
+                        &[jni::objects::JValue::Object(&v)],
+                    )
+                    .unwrap();
+                }
+            }
+
+            return Some(list);
         } else if self.value.is_function() {
             let f = self.value.as_function().unwrap();
             let f = f.clone();

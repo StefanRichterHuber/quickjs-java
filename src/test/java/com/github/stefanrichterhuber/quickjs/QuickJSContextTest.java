@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
@@ -228,6 +229,34 @@ public class QuickJSContextTest {
                 }
             }
 
+        }
+    }
+
+    /**
+     * JS arrays are converted to java.util.List and vice versa
+     */
+    @Test
+    public void listTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+            {
+                Object result = context.eval("[1, 2, 3];");
+                assertInstanceOf(List.class, result);
+                assertEquals(3, ((List<?>) result).size());
+                assertEquals(1, ((List<?>) result).get(0));
+                assertEquals(2, ((List<?>) result).get(1));
+                assertEquals(3, ((List<?>) result).get(2));
+            }
+
+            {
+                context.setGlobal("vs", List.of("hello", "world", "!"));
+                Object result = context.eval("vs");
+                assertInstanceOf(List.class, result);
+                assertEquals(3, ((List<?>) result).size());
+                assertEquals("hello", ((List<?>) result).get(0));
+                assertEquals("world", ((List<?>) result).get(1));
+                assertEquals("!", ((List<?>) result).get(2));
+            }
         }
     }
 

@@ -27,6 +27,7 @@ pub enum ProxiedJavaValue {
     SUPPLIER(Box<dyn Fn() -> ProxiedJavaValue>),
     MAP(Vec<(String, ProxiedJavaValue)>),
     JSFUNCTION(i64),
+    ARRAY(Vec<ProxiedJavaValue>),
 }
 
 impl ProxiedJavaValue {
@@ -80,8 +81,43 @@ impl ProxiedJavaValue {
         let quickjs_function_class = env
             .find_class("com/github/stefanrichterhuber/quickjs/QuickJSFunction")
             .expect("Failed to load the target class");
+        let iterable_class = env
+            .find_class("java/lang/Iterable")
+            .expect("Failed to load the target class");
 
-        if env.is_instance_of(&obj, quickjs_function_class).unwrap() {
+        if env.is_instance_of(&obj, iterable_class).unwrap() {
+            runtime::log(
+                runtime::LogLevel::TRACE,
+                "Create JS array from Java java.lang.Iterable",
+            );
+
+            // Result of the operation -> a list of values
+            let mut items: Vec<ProxiedJavaValue> = vec![];
+
+            // Create an iterator over all results
+            let iterator_result: errors::Result<JValueGen<JObject<'_>>> =
+                env.call_method(&obj, "iterator", "()Ljava/util/Iterator;", &[]);
+            let iterator = iterator_result.unwrap().l().unwrap();
+
+            loop {
+                // Check if there is another item
+                let has_next_result = env.call_method(&iterator, "hasNext", "()Z", &[]);
+                let has_next = has_next_result.unwrap().z().unwrap();
+                if !has_next {
+                    break;
+                }
+
+                // Map next item
+                let next_result = env.call_method(&iterator, "next", "()Ljava/lang/Object;", &[]);
+                let next = next_result.unwrap().l().unwrap();
+                let value = ProxiedJavaValue::from_object(env, next);
+
+                // Push result to map
+                items.push(value);
+            }
+
+            return ProxiedJavaValue::ARRAY(items);
+        } else if env.is_instance_of(&obj, quickjs_function_class).unwrap() {
             runtime::log(
                 runtime::LogLevel::TRACE,
                 "Unwrap Java QuickJSFunction to JS function",
@@ -410,6 +446,17 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
                 // Prevents dropping the function
                 _ = function_to_ptr(func);
                 Ok(s)
+            }
+            ProxiedJavaValue::ARRAY(mut values) => {
+                let obj = rquickjs::Array::new(ctx.clone()).unwrap();
+
+                for i in 0..values.len() {
+                    let value = values.remove(0);
+                    let value = value.into_js(ctx).unwrap();
+                    obj.set(i, value).unwrap();
+                }
+
+                Ok(Value::from_array(obj))
             }
         };
         result
