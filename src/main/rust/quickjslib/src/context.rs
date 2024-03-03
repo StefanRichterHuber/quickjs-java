@@ -1,11 +1,12 @@
 use crate::java_js_proxy::ProxiedJavaValue;
 use crate::js_java_proxy::JSJavaProxy;
-use crate::runtime::{self, ptr_to_runtime, runtime_to_ptr};
+use crate::runtime::{ptr_to_runtime, runtime_to_ptr};
 use jni::{
     objects::{JObject, JString},
     sys::jlong,
     JNIEnv,
 };
+use log::debug;
 use rquickjs::{Context, Error};
 
 // ----------------------------------------------------------------------------------------
@@ -20,7 +21,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
     _obj: JObject<'a>,
     runtime_ptr: jlong,
 ) -> jlong {
-    runtime::log(runtime::LogLevel::DEBUG, "Created new QuickJS context");
+    debug!("Created new QuickJS context");
     let runtime = ptr_to_runtime(runtime_ptr);
     let context = Context::full(&runtime).unwrap();
 
@@ -49,7 +50,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
     _obj: JObject<'a>,
     context_ptr: jlong,
 ) {
-    runtime::log(runtime::LogLevel::DEBUG, "Closed QuickJS context");
+    debug!("Closed QuickJS context");
     let context = ptr_to_context(context_ptr);
     drop(context);
 }

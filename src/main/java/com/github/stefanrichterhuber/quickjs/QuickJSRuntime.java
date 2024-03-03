@@ -24,6 +24,23 @@ public class QuickJSRuntime implements AutoCloseable {
                 // The "lib" prefix and ".so|.dynlib|.dll" suffix are added automatically as
                 // needed.
                 "quickjslib");
+
+        if (LOGGER.getLevel() == Level.ERROR || LOGGER.getLevel() == Level.FATAL) {
+            initLogging(1);
+        } else if (LOGGER.getLevel() == Level.WARN) {
+            initLogging(2);
+        } else if (LOGGER.getLevel() == Level.INFO) {
+            initLogging(3);
+        } else if (LOGGER.getLevel() == Level.DEBUG) {
+            initLogging(4);
+        } else if (LOGGER.getLevel() == Level.TRACE) {
+            initLogging(5);
+        } else if (LOGGER.getLevel() == Level.OFF) {
+            initLogging(0);
+        } else {
+            LOGGER.warn("Unknown log level " + LOGGER.getLevel() + " , using INFO for native library");
+            initLogging(3);
+        }
     }
 
     private long ptr;
@@ -32,7 +49,7 @@ public class QuickJSRuntime implements AutoCloseable {
 
     private static native void closeRuntime(long ptr);
 
-    private native void initLogging(int level);
+    private static native void initLogging(int level);
 
     /**
      * Keep a reference to all contexts created to prevent memory leaks which
@@ -51,23 +68,20 @@ public class QuickJSRuntime implements AutoCloseable {
             case 0:
                 // DO nothing -> log is off
                 break;
-            case 1:
+            case 5:
                 NATIVE_LOGGER.trace(message);
                 break;
-            case 2:
+            case 4:
                 NATIVE_LOGGER.debug(message);
                 break;
             case 3:
                 NATIVE_LOGGER.info(message);
                 break;
-            case 4:
+            case 2:
                 NATIVE_LOGGER.warn(message);
                 break;
-            case 5:
+            case 1:
                 NATIVE_LOGGER.error(message);
-                break;
-            case 6:
-                NATIVE_LOGGER.fatal(message);
                 break;
             default:
                 NATIVE_LOGGER.error(message);
@@ -75,25 +89,6 @@ public class QuickJSRuntime implements AutoCloseable {
     }
 
     public QuickJSRuntime() {
-        if (LOGGER.getLevel() == Level.FATAL) {
-            initLogging(6);
-        } else if (LOGGER.getLevel() == Level.ERROR) {
-            initLogging(5);
-        } else if (LOGGER.getLevel() == Level.WARN) {
-            initLogging(4);
-        } else if (LOGGER.getLevel() == Level.INFO) {
-            initLogging(3);
-        } else if (LOGGER.getLevel() == Level.DEBUG) {
-            initLogging(2);
-        } else if (LOGGER.getLevel() == Level.TRACE) {
-            initLogging(1);
-        } else if (LOGGER.getLevel() == Level.OFF) {
-            initLogging(0);
-        } else {
-            LOGGER.warn("Unknown log level " + LOGGER.getLevel() + " , using INFO for native library");
-            initLogging(3);
-        }
-
         ptr = createRuntime();
     }
 

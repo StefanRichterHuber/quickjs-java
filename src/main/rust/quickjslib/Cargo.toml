@@ -15,6 +15,12 @@ name = "quickjslib"
 crate-type = ["cdylib"]
 
 [dependencies]
-rquickjs = "0.5.1"
-jni = "0.21.1"
-log = "0.4"
+rquickjs = { version = "0.5.1", features = [
+    #  "dump-objects",
+    #  "dump-read-object",
+    #  "dump-bytecode",
+    #  "rust-alloc",
+] }
+lazy_static = "1.4.0"
+jni = { version = "0.21.1", features = ["invocation"] }
+log = { version = "0.4", features = ["std"] }
