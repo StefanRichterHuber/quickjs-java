@@ -13,6 +13,7 @@ use crate::foreign_function::{function_to_ptr, ptr_to_function};
 use crate::js_java_proxy::JSJavaProxy;
 use crate::runtime;
 
+/// This the intermediate value when converting a Java to a JS value.
 pub enum ProxiedJavaValue {
     THROWABLE(String),
     NULL,
@@ -31,6 +32,8 @@ pub enum ProxiedJavaValue {
 }
 
 impl ProxiedJavaValue {
+    /// Converts a Java value to a ProxiedJavaValue. This is achieved by checking the plain Java Object with `instance of` checks for its real type, then extract all the values to a ProxiedJavaValue.
+    /// This involves a lot of call backs into the JVM and has to be optimized, especially for Iterable and Map objects.
     pub fn from_object<'vm>(env: &mut JNIEnv<'vm>, obj: JObject<'vm>) -> Self {
         info!("Calling ProxiedJavaValue::from_object");
         if obj.is_null() {
@@ -38,7 +41,6 @@ impl ProxiedJavaValue {
             return ProxiedJavaValue::NULL;
         }
 
-        // TODO implement different types
         let double_class = env
             .find_class("java/lang/Double")
             .expect("Failed to load the target class");
@@ -360,6 +362,7 @@ impl ProxiedJavaValue {
         }
     }
 
+    /// Creates a ProxiedJavaValue from a Java Throwable
     pub fn from_throwable<'vm>(env: &mut JNIEnv<'vm>, throwable: JThrowable<'vm>) -> Self {
         // @see https://stackoverflow.com/questions/27072459/how-to-get-the-message-from-a-java-exception-caught-in-jni
         // Seems to be necessary, otherwise fetching the message fails
@@ -385,6 +388,7 @@ impl ProxiedJavaValue {
 }
 
 impl<'js> IntoJs<'js> for ProxiedJavaValue {
+    /// Converts a ProxiedJavaValue into a JS value within the given JS context.
     fn into_js(self, ctx: &rquickjs::Ctx<'js>) -> rquickjs::Result<Value<'js>> {
         let result = match self {
             ProxiedJavaValue::THROWABLE(msg) => {

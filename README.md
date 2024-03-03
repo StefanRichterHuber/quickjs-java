@@ -40,6 +40,9 @@ try (QuickJSRuntime runtime = new QuickJSRuntime();
 ```
 
 For further examples look at `com.github.stefanrichterhuber.quickjs.QuickJSContextTest`.
+
+### Supported types
+
 The rust library seamlessly translates all supported Java types to JS types and back. Translations is always a copy operation so changes to an `object` created from a `Map` won't be written back to map. A Java function imported into the JS context will be exported as `com.github.stefanrichterhuber.quickjs.QuickJSFunction`.
 All supported Java types can be used as globals, retrieved as globals or used as function parameters or return values.
 
@@ -50,9 +53,13 @@ All supported Java types can be used as globals, retrieved as globals or used as
 | java.lang.String                                      | string                | -                                                                                                                                                                             |
 | java.lang.Boolean                                     | bool                  | -                                                                                                                                                                             |
 | java.util.Map<String, ?>                              | object                | Key is expected to be a String, values can be of any of the supported Java types, including another map or functions!                                                         |
-| java.lang.Iterable<?>                                 | array                 | Iterable is copied value by value to JS array. JS arrays are converted to `java.util.ArrayList`. Values can be of any of the supported Java types.                                 |
+| java.lang.Iterable<?>                                 | array                 | Iterable is copied value by value to JS array. JS arrays are converted to `java.util.ArrayList`. Values can be of any of the supported Java types.                            |
 | java.util.function.Function<?,?>                      | function              | both parameter and return type could be any of the supported Java types                                                                                                       |
 | java.util.function.Supplier<?>                        | function              | return type could be any of the supported Java types                                                                                                                          |
 | java.util.function.BiFunction<?,?,?>                  | function              | both parameters and return type could be any of the supported Java types                                                                                                      |
 | java.util.function.Consumer<?>                        | function              | parameter could be any of the supported Java types                                                                                                                            |
 | com.github.stefanrichterhuber.quickjs.QuickJSFunction | function              | if js returns a function, its converted to a QuickJSFunction which can be called from Java or added back to the JS context where it will be transformed back to a function    |
+
+### Logging
+
+This library uses log4j2 for logging. Logging from the native library is passed into the JVM and also logged using log4j2 using the name `[QuickJS native library]`.
