@@ -72,6 +72,43 @@ mod tests {
             assert_eq!(true, v.is_float());
         });
     }
+
+    #[test]
+    fn transform_java_int_to_js_int() {
+        let vm = launch_vm();
+        let mut env = vm.attach_current_thread().unwrap();
+
+        // TODO create object and convert it to JS
+        let value = 7;
+        let class: jni::objects::JClass<'_> = env
+            .find_class("java/lang/Integer")
+            .expect("Failed to load the target class");
+        let result = env
+            .call_static_method(
+                class,
+                "valueOf",
+                "(I)Ljava/lang/Integer;",
+                &[jni::objects::JValueGen::Int(value)],
+            )
+            .expect("Failed to create Integer object from value");
+        let object = result.l().unwrap();
+        let proxy = ProxiedJavaValue::from_object(&mut env, object);
+
+        if let ProxiedJavaValue::INT(v) = proxy {
+            assert_eq!(value, v);
+        } else {
+            panic!("Conversion to double value failed")
+        }
+
+        let rt = Runtime::new().unwrap();
+        let ctx = Context::full(&rt).unwrap();
+
+        ctx.with(|ctx| {
+            let v = proxy.into_js(&ctx).unwrap();
+            assert_eq!(true, v.is_int());
+            assert_eq!(7, v.as_int().unwrap());
+        });
+    }
 }
 
 /// This the intermediate value when converting a Java to a JS value.

@@ -21,9 +21,9 @@ rquickjs = { version = "0.5.1", features = [
     #  "dump-read-object",
     #  "dump-bytecode",
 ] }
-jni = { version = "0.21.1" }
+jni = { version = "0.21" }
 log = { version = "0.4", features = ["std"] }
 
 [dev-dependencies]
 # Invocation feature is necessary for tests to spin up a VM
-jni = { version = "*", features = ["invocation"] }
+jni = { version = "0.21", features = ["invocation"] }
