@@ -168,30 +168,16 @@ impl ProxiedJavaValue {
     fn from_iterable<'vm>(env: &mut JNIEnv<'vm>, obj: JObject<'vm>) -> Self {
         debug!("Create JS array from Java java.lang.Iterable");
 
-        // Result of the operation -> a list of values
-        let mut items: Vec<ProxiedJavaValue> = vec![];
-
         // Create an iterator over all results
         let iterator_result: errors::Result<JValueGen<JObject<'_>>> =
             env.call_method(&obj, "iterator", "()Ljava/util/Iterator;", &[]);
         let iterator = iterator_result.unwrap().l().unwrap();
 
-        loop {
-            // Check if there is another item
-            let has_next_result = env.call_method(&iterator, "hasNext", "()Z", &[]);
-            let has_next = has_next_result.unwrap().z().unwrap();
-            if !has_next {
-                break;
-            }
-
-            // Map next item
-            let next_result = env.call_method(&iterator, "next", "()Ljava/lang/Object;", &[]);
-            let next = next_result.unwrap().l().unwrap();
-            let value = ProxiedJavaValue::from_object(env, next);
-
-            // Push result to map
-            items.push(value);
-        }
+        let items = ProxiedJavaValue::iterator_collect(
+            env,
+            iterator,
+            Box::new(|env, value| ProxiedJavaValue::from_object(env, value)),
+        );
 
         return ProxiedJavaValue::ARRAY(items);
     }
@@ -327,12 +313,50 @@ impl ProxiedJavaValue {
         ProxiedJavaValue::BIFUNCTION(Box::new(f))
     }
 
+    /// Converts a Map entry into a pair of String and ProxiedJavaValue
+    fn from_map_entry<'vm>(env: &mut JNIEnv<'vm>, obj: JObject<'vm>) -> (String, Self) {
+        // Get key
+        let get_key_result = env.call_method(&obj, "getKey", "()Ljava/lang/Object;", &[]);
+        let key = get_key_result.unwrap().l().unwrap().into();
+        let key: String = env.get_string(&key).unwrap().into();
+
+        // Get value from entry
+        let get_value_result = env.call_method(&obj, "getValue", "()Ljava/lang/Object;", &[]);
+        let value = get_value_result.unwrap().l().unwrap();
+        let value: ProxiedJavaValue = ProxiedJavaValue::from_object(env, value);
+
+        (key, value)
+    }
+
+    /// Iterates over all items provided by the given Java iterator, applies the for_each function and collects the result into a vector
+    fn iterator_collect<'vm, T>(
+        env: &mut JNIEnv<'vm>,
+        iterator: JObject<'vm>,
+        for_each: Box<dyn Fn(&mut JNIEnv<'vm>, JObject<'vm>) -> T + 'vm>,
+    ) -> Vec<T> {
+        // Result of the operation -> a list of key-value pairs
+        let mut items: Vec<T> = vec![];
+        loop {
+            // Check if there is another item
+            let has_next_result = env.call_method(&iterator, "hasNext", "()Z", &[]);
+            let has_next = has_next_result.unwrap().z().unwrap();
+            if !has_next {
+                break;
+            }
+
+            // Map next item
+            let next_result = env.call_method(&iterator, "next", "()Ljava/lang/Object;", &[]);
+            let next = next_result.unwrap().l().unwrap();
+
+            let value = for_each(env, next);
+            items.push(value);
+        }
+        items
+    }
+
     /// Converts a Java java.util.Map into a js object
     fn from_map<'vm>(env: &mut JNIEnv<'vm>, obj: JObject<'vm>) -> Self {
         debug!("Copy Java Map<Object, Object> to JS object",);
-
-        // Result of the operation -> a list of key-value pairs
-        let mut items: Vec<(String, ProxiedJavaValue)> = vec![];
 
         // Iterate over all items
 
@@ -348,31 +372,11 @@ impl ProxiedJavaValue {
         let iterator = iterator_result.unwrap().l().unwrap();
 
         // FIXME cache method ids for better performance
-        loop {
-            // Check if there is another item
-            let has_next_result = env.call_method(&iterator, "hasNext", "()Z", &[]);
-            let has_next = has_next_result.unwrap().z().unwrap();
-            if !has_next {
-                break;
-            }
-
-            // Map next item
-            let next_result = env.call_method(&iterator, "next", "()Ljava/lang/Object;", &[]);
-            let next = next_result.unwrap().l().unwrap();
-
-            // Get key
-            let get_key_result = env.call_method(&next, "getKey", "()Ljava/lang/Object;", &[]);
-            let key = get_key_result.unwrap().l().unwrap().into();
-            let key: String = env.get_string(&key).unwrap().into();
-
-            // Get value from entry
-            let get_value_result = env.call_method(&next, "getValue", "()Ljava/lang/Object;", &[]);
-            let value = get_value_result.unwrap().l().unwrap();
-            let value = ProxiedJavaValue::from_object(env, value);
-
-            // Push result to map
-            items.push((key, value));
-        }
+        let items = ProxiedJavaValue::iterator_collect(
+            env,
+            iterator,
+            Box::new(|env, entry| ProxiedJavaValue::from_map_entry(env, entry)),
+        );
 
         ProxiedJavaValue::MAP(items)
     }
@@ -385,17 +389,31 @@ impl ProxiedJavaValue {
             return ProxiedJavaValue::NULL;
         }
 
-        if ProxiedJavaValue::is_array(env, &obj) {
-            let array = JObjectArray::from(obj);
-            ProxiedJavaValue::from_array(env, array)
+        // To minimize the number of calls into the JVM, the checks are roughly ordered with probability of being used (so first simple values, then collections, then functions, then not-well-supported values, then fallback)
+        if ProxiedJavaValue::is_instance_of("java/lang/Boolean", env, &obj) {
+            let raw_value = env.call_method(&obj, "booleanValue", "()Z", &[]);
+            let value = raw_value.unwrap().z().unwrap();
+            debug!("Map Java Boolean to JS bool");
+            ProxiedJavaValue::BOOL(value)
+        } else if ProxiedJavaValue::is_instance_of("java/lang/Integer", env, &obj) {
+            let raw_value = env.call_method(&obj, "intValue", "()I", &[]);
+            let value = raw_value.unwrap().i().unwrap();
+            debug!("Map Java Integer to JS int");
+            ProxiedJavaValue::INT(value)
+        } else if ProxiedJavaValue::is_instance_of("java/lang/String", env, &obj) {
+            let str: JString = obj.into();
+            let plain: String = env.get_string(&str).unwrap().into();
+            debug!("Map Java String to JS String");
+            ProxiedJavaValue::STRING(plain)
+        } else if ProxiedJavaValue::is_instance_of("java/lang/Double", env, &obj)
+            || ProxiedJavaValue::is_instance_of("java/lang/Float", env, &obj)
+        {
+            let raw_value = env.call_method(&obj, "doubleValue", "()D", &[]);
+            let value = raw_value.unwrap().d().unwrap();
+            debug!("Map Java Double / Float to JS Double",);
+            ProxiedJavaValue::DOUBLE(value)
         } else if ProxiedJavaValue::is_instance_of("java/lang/Iterable", env, &obj) {
             ProxiedJavaValue::from_iterable(env, obj)
-        } else if ProxiedJavaValue::is_instance_of(
-            "com/github/stefanrichterhuber/quickjs/QuickJSFunction",
-            env,
-            &obj,
-        ) {
-            ProxiedJavaValue::from_quick_js_function(env, obj)
         } else if ProxiedJavaValue::is_instance_of("java/util/Map", env, &obj) {
             ProxiedJavaValue::from_map(env, obj)
         } else if ProxiedJavaValue::is_instance_of("java/util/function/Consumer", env, &obj) {
@@ -406,6 +424,15 @@ impl ProxiedJavaValue {
             ProxiedJavaValue::from_supplier(env, obj)
         } else if ProxiedJavaValue::is_instance_of("java/util/function/Function", env, &obj) {
             ProxiedJavaValue::from_function(env, obj)
+        } else if ProxiedJavaValue::is_instance_of(
+            "com/github/stefanrichterhuber/quickjs/QuickJSFunction",
+            env,
+            &obj,
+        ) {
+            ProxiedJavaValue::from_quick_js_function(env, obj)
+        } else if ProxiedJavaValue::is_array(env, &obj) {
+            let array = JObjectArray::from(obj);
+            ProxiedJavaValue::from_array(env, array)
         } else if ProxiedJavaValue::is_instance_of("java/math/BigInteger", env, &obj) {
             // Convert big integer to string -> later on bag to JS big integer
             let raw_value = env.call_method(&obj, "longValue", "()J", &[]);
@@ -419,33 +446,11 @@ impl ProxiedJavaValue {
             let plain: String = env.get_string(&str).unwrap().into();
             debug!("Map Java BigDecimal to JS BigDecimal",);
             ProxiedJavaValue::BIGDECIMAL(plain)
-        } else if ProxiedJavaValue::is_instance_of("java/lang/Double", env, &obj)
-            || ProxiedJavaValue::is_instance_of("java/lang/Float", env, &obj)
-        {
-            let raw_value = env.call_method(&obj, "doubleValue", "()D", &[]);
-            let value = raw_value.unwrap().d().unwrap();
-            debug!("Map Java Double / Float to JS Double",);
-            ProxiedJavaValue::DOUBLE(value)
-        } else if ProxiedJavaValue::is_instance_of("java/lang/String", env, &obj) {
-            let str: JString = obj.into();
-            let plain: String = env.get_string(&str).unwrap().into();
-            debug!("Map Java String to JS String");
-            ProxiedJavaValue::STRING(plain)
         } else if ProxiedJavaValue::is_instance_of("java/lang/Long", env, &obj) {
             let raw_value = env.call_method(&obj, "longValue", "()J", &[]);
             let value = raw_value.unwrap().j().unwrap();
             debug!("Map Java Long to JS BigInteger");
             ProxiedJavaValue::BIGINTEGER(value)
-        } else if ProxiedJavaValue::is_instance_of("java/lang/Integer", env, &obj) {
-            let raw_value = env.call_method(&obj, "intValue", "()I", &[]);
-            let value = raw_value.unwrap().i().unwrap();
-            debug!("Map Java Integer to JS int");
-            ProxiedJavaValue::INT(value)
-        } else if ProxiedJavaValue::is_instance_of("java/lang/Boolean", env, &obj) {
-            let raw_value = env.call_method(&obj, "booleanValue", "()Z", &[]);
-            let value = raw_value.unwrap().z().unwrap();
-            debug!("Map Java Boolean to JS bool");
-            ProxiedJavaValue::BOOL(value)
         } else {
             let raw_value = env.call_method(&obj, "toString", "()Ljava/lang/String;", &[]);
             let str: JString = raw_value.unwrap().l().unwrap().into();
