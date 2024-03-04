@@ -54,6 +54,7 @@ All supported Java types can be used as globals, retrieved as globals or used as
 | java.lang.Boolean                                     | bool                  | -                                                                                                                                                                             |
 | java.util.Map<String, ?>                              | object                | Key is expected to be a String, values can be of any of the supported Java types, including another map or functions!                                                         |
 | java.lang.Iterable<?>                                 | array                 | Iterable is copied value by value to JS array. JS arrays are converted to `java.util.ArrayList`. Values can be of any of the supported Java types.                            |
+| java.lang.Object[]                                    | array                 | Array is copied value by value to JS array.  If extracted back from JS, the array will always return as a `java.util.ArrayList`.                                              |
 | java.util.function.Function<?,?>                      | function              | both parameter and return type could be any of the supported Java types                                                                                                       |
 | java.util.function.Supplier<?>                        | function              | return type could be any of the supported Java types                                                                                                                          |
 | java.util.function.BiFunction<?,?,?>                  | function              | both parameters and return type could be any of the supported Java types                                                                                                      |
@@ -62,4 +63,4 @@ All supported Java types can be used as globals, retrieved as globals or used as
 
 ### Logging
 
-This library uses log4j2 for logging. Logging from the native library is passed into the JVM and also logged using log4j2 using the name `[QuickJS native library]`.
+This library uses log4j2 for logging on the java side and the `log` crate on the Rust side. Logging from the native library is passed into the JVM and logged using log4j2 with the logger name `[QuickJS native library]`.

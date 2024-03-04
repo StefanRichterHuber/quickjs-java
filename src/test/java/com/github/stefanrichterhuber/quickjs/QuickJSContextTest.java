@@ -233,12 +233,32 @@ public class QuickJSContextTest {
     }
 
     /**
+     * Java object arrays are converted to js arrays
+     * 
+     * @throws Exception
+     */
+    @Test
+    public void arrayTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            context.setGlobal("vs", new Object[] { "a", "b", "c" });
+            Object result = context.eval("vs");
+            assertEquals(3, ((List<?>) result).size());
+            assertEquals("a", ((List<?>) result).get(0));
+            assertEquals("b", ((List<?>) result).get(1));
+            assertEquals("c", ((List<?>) result).get(2));
+        }
+    }
+
+    /**
      * JS arrays are converted to java.util.List and vice versa
      */
     @Test
     public void listTest() throws Exception {
         try (QuickJSRuntime runtime = new QuickJSRuntime();
                 QuickJSContext context = runtime.createContext()) {
+
             {
                 Object result = context.eval("[1, 2, 3];");
                 assertInstanceOf(List.class, result);

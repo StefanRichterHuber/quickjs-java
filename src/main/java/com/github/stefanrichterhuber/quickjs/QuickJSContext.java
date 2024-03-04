@@ -152,6 +152,17 @@ public class QuickJSContext implements AutoCloseable {
     }
 
     /**
+     * Adds a global variable to the context. Array values are copied value by
+     * value to an JS array.
+     * 
+     * @param name  Name of the variable
+     * @param value Value of the variable
+     */
+    public <T> void setGlobal(String name, T[] value) {
+        this.setGlobal(getContextPointer(), name, value);
+    }
+
+    /**
      * Adds a global variable to the context.
      * 
      * @param name  Name of the variable
