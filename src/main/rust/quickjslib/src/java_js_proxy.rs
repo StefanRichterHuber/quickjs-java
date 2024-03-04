@@ -6,7 +6,7 @@ use jni::{
     objects::{JObject, JString},
     JNIEnv,
 };
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, warn};
 use rquickjs::{BigInt, Exception, Function, IntoJs, Value};
 
 use crate::foreign_function::{function_to_ptr, ptr_to_function};
@@ -72,13 +72,6 @@ mod tests {
             assert_eq!(true, v.is_float());
         });
     }
-}
-
-lazy_static! {
-    static ref METHOD_ID_CACHE: std::sync::Mutex<std::collections::HashMap<String, jni::objects::JMethodID>> = {
-        let m = std::sync::Mutex::new(std::collections::HashMap::new());
-        m
-    };
 }
 
 /// This the intermediate value when converting a Java to a JS value.

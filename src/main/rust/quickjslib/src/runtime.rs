@@ -95,41 +95,42 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSRuntime
     _obj: JObject<'a>,
     level: jint,
 ) {
-    let log_id = _env
-        .get_static_method_id(
-            "com/github/stefanrichterhuber/quickjs/QuickJSRuntime",
-            "runtimeLog",
-            "(ILjava/lang/String;)V",
-        )
-        .unwrap();
+    if level > 0 {
+        let log_id = _env
+            .get_static_method_id(
+                "com/github/stefanrichterhuber/quickjs/QuickJSRuntime",
+                "runtimeLog",
+                "(ILjava/lang/String;)V",
+            )
+            .unwrap();
 
-    let vm = _env.get_java_vm().unwrap();
+        let vm = _env.get_java_vm().unwrap();
 
-    let lvl = match level {
-        1 => Level::Error,
-        2 => Level::Warn,
-        3 => Level::Info,
-        4 => Level::Debug,
-        5 => Level::Trace,
-        _ => Level::Error,
-    };
-    let filter = match level {
-        1 => LevelFilter::Error,
-        2 => LevelFilter::Warn,
-        3 => LevelFilter::Info,
-        4 => LevelFilter::Debug,
-        5 => LevelFilter::Trace,
-        _ => LevelFilter::Error,
-    };
+        let lvl = match level {
+            1 => Level::Error,
+            2 => Level::Warn,
+            3 => Level::Info,
+            4 => Level::Debug,
+            5 => Level::Trace,
+            _ => Level::Error,
+        };
+        let filter = match level {
+            1 => LevelFilter::Error,
+            2 => LevelFilter::Warn,
+            3 => LevelFilter::Info,
+            4 => LevelFilter::Debug,
+            5 => LevelFilter::Trace,
+            _ => LevelFilter::Error,
+        };
 
-    let log_context = JavaLogContext {
-        method_id: log_id,
-        vm,
-        level: lvl,
-    };
+        let log_context = JavaLogContext {
+            method_id: log_id,
+            vm,
+            level: lvl,
+        };
 
-    println!("Logger initalized with level {}", level);
-    log::set_boxed_logger(Box::new(log_context))
-        .map(|()| log::set_max_level(filter))
-        .unwrap();
+        log::set_boxed_logger(Box::new(log_context))
+            .map(|()| log::set_max_level(filter))
+            .unwrap();
+    }
 }

@@ -2,13 +2,6 @@ use jni::{objects::JObject, sys::jlong, JNIEnv};
 use log::{error, trace};
 use rquickjs::{FromJs, Value};
 
-lazy_static! {
-    static ref METHOD_ID_CACHE: std::sync::Mutex<std::collections::HashMap<String, jni::objects::JMethodID>> = {
-        let m = std::sync::Mutex::new(std::collections::HashMap::new());
-        m
-    };
-}
-
 /// This proxy assist in converting JS values to Java values
 pub struct JSJavaProxy<'js> {
     pub value: Value<'js>,
@@ -21,23 +14,6 @@ impl<'js> FromJs<'js> for JSJavaProxy<'js> {
 }
 
 impl<'js, 'vm, 'r> JSJavaProxy<'js> {
-    fn get_method_id(
-        env: &mut JNIEnv,
-        class: &str,
-        method: &str,
-        signature: &str,
-    ) -> jni::objects::JMethodID {
-        let mut method_id_cache = METHOD_ID_CACHE.lock().unwrap();
-        let key = format!("{}-{}-{}", class, method, signature);
-        if method_id_cache.contains_key(&key) {
-            return method_id_cache.get(&key).unwrap().clone();
-        }
-
-        let method_id = env.get_method_id(class, method, signature).unwrap();
-        method_id_cache.insert(key, method_id.clone());
-        method_id
-    }
-
     pub fn new(value: Value<'js>) -> Self {
         JSJavaProxy { value }
     }
