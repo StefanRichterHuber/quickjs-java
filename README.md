@@ -30,25 +30,26 @@ And then create a QuickJS runtime and QuickJS context and start using Javascript
 try (QuickJSRuntime runtime = new QuickJSRuntime();
     QuickJSContext context = runtime.createContext()) {
 
-    // Set global variable
+    // Set global variable. For supported types, see table below.
     context.setGlobal("a", "hello");
-    // Get global variable
+    // Get global variable. Always returns (boxed) Object or null. Type-check and cast on the java side. See table of supported types below.
     Object a = context.getGlobal("a");
-    // Eval script
+    // Eval script. Always returns a (boxed) Object or null. Type-check and cast on the java side. See table of supported types below.
     Object v = context.eval("3 + 4");
-    assertEquals(7, v);
+    assertEquals(7, (Integer)v);
+}
 ```
 
 For further examples look at `com.github.stefanrichterhuber.quickjs.QuickJSContextTest`.
 
 ### Supported types
 
-The rust library seamlessly translates all supported Java types to JS types and back. Translations is always a copy operation so changes to an `object` created from a `Map` won't be written back to map. A Java function imported into the JS context will be exported as `com.github.stefanrichterhuber.quickjs.QuickJSFunction`.
-All supported Java types can be used as globals, retrieved as globals or used as function parameters or return values.
+The rust library seamlessly translates all supported Java types to JS types and back. Translations is always a copy operation so changes to an `object` created from a `Map` won't be written back to map, for example. A Java function imported into the JS context will be exported as `com.github.stefanrichterhuber.quickjs.QuickJSFunction`.
+All supported Java types can be used as globals, retrieved as globals or used as function parameters or return values and map values.
 
 | Java type                                             |      JS Type              |  Remark                                                                                                                                                                       |
 |---------------------------------------------------------|:-----------------------:|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `null`                                                  | `null`                  | Both js `null` and undefined are mapped to Java `null`.                                                                                                                           |
+| `null`                                                  | `null`                  | Both js `null` and undefined are mapped to Java `null`.                                                                                                                       |
 | `java.lang.Integer`                                     | `int`                   | -                                                                                                                                                                             |
 | `java.lang.Double` / `java.lang.Float`                  | `float` ( 64-bit)       | rquickjs only supports 64-bit floats                                                                                                                                          |
 | `java.lang.String`                                      | `string`                | -                                                                                                                                                                             |
@@ -64,10 +65,10 @@ All supported Java types can be used as globals, retrieved as globals or used as
 
 ### Logging
 
-This library uses log4j2 for logging on the java side and the `log` crate on the Rust side. Logging from the native library is passed into the JVM and logged using log4j2 with the logger name `[QuickJS native library]`.
+This library uses log4j2 for logging on the java side and the `log` crate on the Rust side. Log messages from the native library are passed into the JVM and logged using log4j2 with the logger name `[QuickJS native library]`.
 
 ## TODO
 
 - [ ] Add support for BigInteger and BigDecimal. Requires support from rquickjs library.
-- [ ] There are some issues around float values ( e.g. `eval("2.37")` results in an int `2`)
-- [ ] Support cross-build of native library in maven
+- [ ] Fix issues around float values ( e.g. `eval("2.37")` results in an int `2`)
+- [ ] Support cross-build of native library in maven, so multiple arches are supported out-of-the box.

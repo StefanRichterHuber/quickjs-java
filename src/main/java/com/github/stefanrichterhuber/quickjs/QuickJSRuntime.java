@@ -2,6 +2,7 @@ package com.github.stefanrichterhuber.quickjs;
 
 import java.lang.ref.Cleaner;
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 
 import org.apache.logging.log4j.Level;
@@ -16,6 +17,7 @@ public class QuickJSRuntime implements AutoCloseable {
     private static final Logger LOGGER = LogManager.getLogger();
     private static final Logger NATIVE_LOGGER = LogManager.getLogger("[QuickJS native library]");
 
+    // Loads the native library and initializes logging
     static {
         JarJniLoader.loadLib(
                 QuickJSRuntime.class,
@@ -25,24 +27,25 @@ public class QuickJSRuntime implements AutoCloseable {
                 // needed.
                 "quickjslib");
 
-        if (LOGGER.getLevel() == Level.ERROR || LOGGER.getLevel() == Level.FATAL) {
+        if (NATIVE_LOGGER.getLevel() == Level.ERROR || LOGGER.getLevel() == Level.FATAL) {
             initLogging(1);
-        } else if (LOGGER.getLevel() == Level.WARN) {
+        } else if (NATIVE_LOGGER.getLevel() == Level.WARN) {
             initLogging(2);
-        } else if (LOGGER.getLevel() == Level.INFO) {
+        } else if (NATIVE_LOGGER.getLevel() == Level.INFO) {
             initLogging(3);
-        } else if (LOGGER.getLevel() == Level.DEBUG) {
+        } else if (NATIVE_LOGGER.getLevel() == Level.DEBUG) {
             initLogging(4);
-        } else if (LOGGER.getLevel() == Level.TRACE) {
+        } else if (NATIVE_LOGGER.getLevel() == Level.TRACE) {
             initLogging(5);
-        } else if (LOGGER.getLevel() == Level.OFF) {
+        } else if (NATIVE_LOGGER.getLevel() == Level.OFF) {
             initLogging(0);
         } else {
-            LOGGER.warn("Unknown log level " + LOGGER.getLevel() + " , using INFO for native library");
+            LOGGER.warn("Unknown log level " + NATIVE_LOGGER.getLevel() + " , using INFO for native library");
             initLogging(3);
         }
     }
 
+    // Pointer to native runtime
     private long ptr;
 
     private native long createRuntime();
@@ -60,8 +63,8 @@ public class QuickJSRuntime implements AutoCloseable {
     /**
      * This method is called by the native code to log a message.
      * 
-     * @param level
-     * @param message
+     * @param level   Log level
+     * @param message Message to log
      */
     static void runtimeLog(int level, String message) {
         switch (level) {
@@ -88,6 +91,9 @@ public class QuickJSRuntime implements AutoCloseable {
         }
     }
 
+    /**
+     * Creates a new QuickJSRuntime
+     */
     public QuickJSRuntime() {
         ptr = createRuntime();
     }
@@ -110,10 +116,25 @@ public class QuickJSRuntime implements AutoCloseable {
         }
     }
 
+    /**
+     * Creates a new independent QuickJS context. Each context has its own set of
+     * globals
+     * 
+     * @return QuickJSContext
+     */
     public QuickJSContext createContext() {
         QuickJSContext result = new QuickJSContext(this);
         this.dependedResources.add(result);
         return result;
     }
 
+    @Override
+    public boolean equals(Object obj) {
+        return obj instanceof QuickJSRuntime && ((QuickJSRuntime) obj).ptr == this.ptr;
+    }
+
+    @Override
+    public int hashCode() {
+        return ptr == 0 ? 0 : Objects.hash(ptr);
+    }
 }

@@ -5,12 +5,18 @@ import java.math.BigInteger;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+/**
+ * QuickJSContext is a independent namespace with its own set of globals. With
+ * this instance we interact with the QuickJS runtime, set and get global
+ * variables and finally evaluate JS code.
+ */
 public class QuickJSContext implements AutoCloseable {
     private long ptr;
 
@@ -41,6 +47,11 @@ public class QuickJSContext implements AutoCloseable {
         }
     }
 
+    /**
+     * Creates a new QuickJSContext instance from a QuickJSRuntime
+     * 
+     * @param runtime
+     */
     QuickJSContext(QuickJSRuntime runtime) {
         ptr = createContext(runtime.getRuntimePointer());
     }
@@ -64,7 +75,7 @@ public class QuickJSContext implements AutoCloseable {
      */
     public Object getGlobal(String name) {
         Object result = this.getGlobal(getContextPointer(), name);
-        this.checkForDependendResources(result);
+        this.checkForDependentResources(result);
         return result;
     }
 
@@ -231,13 +242,13 @@ public class QuickJSContext implements AutoCloseable {
      */
     public Object eval(String script) {
         final Object result = this.eval(getContextPointer(), script);
-        checkForDependendResources(result);
+        checkForDependentResources(result);
         return result;
     }
 
-    // Checks for context dependend resources like QuickJSFunction and add them to
+    // Checks for context dependent resources like QuickJSFunction and add them to
     // the clean up list
-    void checkForDependendResources(Object result) {
+    void checkForDependentResources(Object result) {
         if (result instanceof QuickJSFunction) {
             var f = (QuickJSFunction) result;
             dependedResources.add(f);
@@ -245,11 +256,21 @@ public class QuickJSContext implements AutoCloseable {
         }
         if (result instanceof Collection) {
             for (Object o : (Collection<?>) result) {
-                checkForDependendResources(o);
+                checkForDependentResources(o);
             }
         }
         if (result instanceof Map) {
-            checkForDependendResources(((Map<?, ?>) result).values());
+            checkForDependentResources(((Map<?, ?>) result).values());
         }
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        return obj instanceof QuickJSContext && ((QuickJSContext) obj).ptr == this.ptr;
+    }
+
+    @Override
+    public int hashCode() {
+        return ptr == 0 ? 0 : Objects.hash(ptr);
     }
 }
