@@ -127,10 +127,14 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
             Err(e) => match e {
                 Error::Exception => {
                     let catch = ctx.catch();
-                    let execp = catch.as_exception().unwrap();
-                    let msg = format!("{:?}", execp);
 
-                    _env.throw_new("java/lang/Exception", msg).unwrap();
+                    if let Some(execp) = catch.as_exception() {
+                        let msg = format!("{:?}", execp);
+                        _env.throw_new("java/lang/Exception", msg).unwrap();
+                    } else if let Some(msg) = catch.as_string() {
+                        let msg = msg.to_string().unwrap();
+                        _env.throw_new("java/lang/Exception", msg).unwrap();
+                    }
                 }
                 _ => {
                     _env.throw_new("java/lang/Exception", e.to_string())

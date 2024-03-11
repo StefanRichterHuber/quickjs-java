@@ -10,10 +10,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 public class QuickJSContextTest {
@@ -409,6 +411,7 @@ public class QuickJSContextTest {
                 fail("This should never happen, because there is an endless loop before");
 
             } catch (Exception e) {
+                assertTrue(e.getMessage().contains("interrupted"));
                 // Expected exception due to interruption
                 long endTime = System.currentTimeMillis();
                 long duration = endTime - startTime;
@@ -416,6 +419,38 @@ public class QuickJSContextTest {
                 assertTrue(duration < 1500);
             }
 
+        }
+    }
+
+    @Test
+    @Disabled("Takes too long")
+    public void limitMemoryTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            // We need a huge memory limit just for the callback, and some bytes extra for
+            // the array
+            runtime.withMemoryLimit(90000);
+
+            AtomicInteger ai = new AtomicInteger(0);
+
+            context.setGlobal("f", (List<Integer> l) -> {
+                // Log the size of the array
+                ai.set(l.size());
+            });
+
+            try {
+
+                // This never finishes without hitting memory limit
+                var obj = context.eval(
+                        "const nrs = []; while (true) { nrs.push(5); f(nrs); }");
+                fail("This should never happen, because there is an endless loop before");
+
+            } catch (Exception e) {
+                assertTrue(e.getMessage().contains("out of memory"));
+                // Eventually we arrive here
+                assertTrue(ai.get() < 2000);
+            }
         }
     }
 

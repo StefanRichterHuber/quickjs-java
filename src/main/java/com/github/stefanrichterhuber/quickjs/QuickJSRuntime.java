@@ -54,14 +54,42 @@ public class QuickJSRuntime implements AutoCloseable {
     // Pointer to native runtime
     private long ptr;
 
+    /**
+     * Creates a new native runtime
+     * 
+     * @return Pointer to the native runtime
+     */
     private native long createRuntime();
 
+    /**
+     * Closes the native runtime
+     * 
+     * @param ptr Pointer to the native runtime
+     */
     private static native void closeRuntime(long ptr);
 
+    /**
+     * Initializes the logging for the native library. Only allowed to be called
+     * once!
+     * 
+     * @param level Log level from 0 (off) to 5 (trace)
+     */
     private static native void initLogging(int level);
 
+    /**
+     * Sets the memory limit for the javascript runtime
+     * 
+     * @param ptr   Pointer to the native runtime
+     * @param limit Memory limit in bytes
+     */
     private static native void setMemoryLimit(long ptr, long limit);
 
+    /**
+     * Sets the maximum stack size for the javascript runtime
+     * 
+     * @param ptr  Pointer to the native runtime
+     * @param size Limit in bytes
+     */
     private static native void setMaxStackSize(long ptr, long size);
 
     /**
@@ -74,7 +102,7 @@ public class QuickJSRuntime implements AutoCloseable {
      * Time in milliseconds when the script was started. This is used to ensure the
      * script meets its runtime limits
      */
-    private long scriptStartTime;
+    private long scriptStartTime = -1;
 
     /**
      * Keep a reference to all contexts created to prevent memory leaks which
@@ -138,7 +166,6 @@ public class QuickJSRuntime implements AutoCloseable {
             return !(System.currentTimeMillis() - scriptStartTime < scriptRuntimeLimit);
         }
         return false;
-
     }
 
     /**
@@ -161,8 +188,8 @@ public class QuickJSRuntime implements AutoCloseable {
      * Sets the time a script is allowed to run. Negative values allow for infinite
      * runtime
      * 
-     * @param limit
-     * @param unit
+     * @param limit Limit to set
+     * @param unit  Time Unit of the limit
      * @return this QuickJSRuntime instance for method chaining.
      */
     public QuickJSRuntime withScriptRuntimeLimit(long limit, TimeUnit unit) {
