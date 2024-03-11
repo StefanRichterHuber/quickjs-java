@@ -11,6 +11,8 @@ There are several (more) mature JavaScript runtimes for Java like
 
 All of these deeply integrate with the Java runtime and allow full access of JS scripts into the Java runtime. For some applications this might be a security or stability issue. This runtime, on the other hand, only has a very lean interface between Java and Javascript. Scripts can only access the objects explicitly passed into the runtime and have no other access to the outside world. Furthermore hard limits on time and memory consumption of the scripts can be easily set, to limit the impact af malicious or faulty scripts on your applications This is especially great to implement some calculation or validation scripts, so very small scripts with a small, very well defined scope. Due to the safe nature of this runtime, you can pass writing this scripts to trusted users without compromising the integrity of the rest of your application.
 
+On the other hand, this library requires a native library to be build, which adds some build complexity (requires Rust with cargo).
+
 ## Build
 
 You need Java 21 and Rust with cargo to build this project. The `rust-maven-plugin` is used to trigger rust build from maven, so a single
@@ -53,7 +55,7 @@ For further examples look at `com.github.stefanrichterhuber.quickjs.QuickJSConte
 
 ### Supported types
 
-The rust library seamlessly translates all supported Java types to JS types and back. Translations is always a copy operation so changes to an `object` created from a `Map` won't be written back to map, for example. A Java function imported into the JS context will be exported as `com.github.stefanrichterhuber.quickjs.QuickJSFunction`.
+The rust library seamlessly translates all supported Java types to JS types and back. Translation is always a copy operation so changes to an `object` created from a `Map` won't be written back to map, for example. A Java function imported into the JS context will be exported as `com.github.stefanrichterhuber.quickjs.QuickJSFunction`.
 All supported Java types can be used as globals, retrieved as globals or used as function parameters or return values and map values.
 
 | Java type                                               |      JS Type            |  Remark                                                                                                                                                                       |
