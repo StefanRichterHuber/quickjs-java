@@ -3,10 +3,13 @@ package com.github.stefanrichterhuber.quickjs;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -388,6 +391,31 @@ public class QuickJSContextTest {
                 }
 
             }
+        }
+    }
+
+    @Test
+    public void limitRuntimeTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            runtime.setScriptRuntimeLimit(1, TimeUnit.SECONDS);
+
+            long startTime = System.currentTimeMillis();
+
+            try {
+                // This never finishes without interruption
+                context.eval("while (true) {  }");
+                fail("This should never happen, because there is an endless loop before");
+
+            } catch (Exception e) {
+                // Expected exception due to interruption
+                long endTime = System.currentTimeMillis();
+                long duration = endTime - startTime;
+                // Should be exactly 1 second, give it some extra time
+                assertTrue(duration < 1500);
+            }
+
         }
     }
 

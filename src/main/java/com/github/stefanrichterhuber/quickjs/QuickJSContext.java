@@ -15,9 +15,10 @@ import java.util.function.Supplier;
 /**
  * QuickJSContext is a independent namespace with its own set of globals. With
  * this instance we interact with the QuickJS runtime, set and get global
- * variables and finally evaluate JS code.
+ * variables and finally evaluate JS code. It is not thread safe!
  */
 public class QuickJSContext implements AutoCloseable {
+    private final QuickJSRuntime runtime;
     private long ptr;
 
     private native long createContext(long runtimePtr);
@@ -53,7 +54,8 @@ public class QuickJSContext implements AutoCloseable {
      * @param runtime
      */
     QuickJSContext(QuickJSRuntime runtime) {
-        ptr = createContext(runtime.getRuntimePointer());
+        this.runtime = runtime;
+        this.ptr = createContext(runtime.getRuntimePointer());
     }
 
     /**
@@ -241,9 +243,14 @@ public class QuickJSContext implements AutoCloseable {
      * @return Result from the script
      */
     public Object eval(String script) {
-        final Object result = this.eval(getContextPointer(), script);
-        checkForDependentResources(result);
-        return result;
+        this.runtime.scriptStarted();
+        try {
+            final Object result = this.eval(getContextPointer(), script);
+            checkForDependentResources(result);
+            return result;
+        } finally {
+            this.runtime.scriptFinished();
+        }
     }
 
     // Checks for context dependent resources like QuickJSFunction and add them to

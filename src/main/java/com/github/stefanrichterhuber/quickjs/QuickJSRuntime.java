@@ -4,6 +4,7 @@ import java.lang.ref.Cleaner;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
@@ -11,6 +12,11 @@ import org.apache.logging.log4j.Logger;
 
 import io.questdb.jar.jni.JarJniLoader;
 
+/**
+ * QuickJSRuntime is the root object for managing QuickJS. It manages the
+ * resources (both memory and time) allowed to be used for scripts. It is not
+ * thread safe!
+ */
 public class QuickJSRuntime implements AutoCloseable {
     static final Cleaner CLEANER = Cleaner.create();
 
@@ -53,6 +59,21 @@ public class QuickJSRuntime implements AutoCloseable {
     private static native void closeRuntime(long ptr);
 
     private static native void initLogging(int level);
+
+    private static native void setMemoryLimit(long ptr, long limit);
+
+    private static native void setMaxStackSize(long ptr, long size);
+
+    /**
+     * Number of milliseconds a script is allowed to run
+     */
+    private long scriptRuntimeLimit = -1;
+
+    /**
+     * Time in milliseconds when the script was started. This is used to ensure the
+     * script meets its runtime limits
+     */
+    private long scriptStartTime;
 
     /**
      * Keep a reference to all contexts created to prevent memory leaks which
@@ -103,6 +124,65 @@ public class QuickJSRuntime implements AutoCloseable {
             throw new IllegalStateException("QuickJSRuntime closed");
         }
         return ptr;
+    }
+
+    /**
+     * This method is called by the native code regularly to check if the execution
+     * of JS has be interrupted.
+     * The JS code continues to run as long as this method returns false.
+     * Currently this used to implement a timeout for scripts.
+     */
+    boolean jsInterrupt() {
+        if (this.scriptStartTime > 0 && scriptRuntimeLimit > 0) {
+            return !(System.currentTimeMillis() - scriptStartTime < scriptRuntimeLimit);
+        }
+        return false;
+
+    }
+
+    /**
+     * Callback called by QuickJSContext when a script is started
+     */
+    void scriptStarted() {
+        if (this.scriptRuntimeLimit > 0) {
+            scriptStartTime = System.currentTimeMillis();
+        }
+    }
+
+    /**
+     * Callback called by QuickJSContext when a script is started
+     */
+    void scriptFinished() {
+        this.scriptStartTime = -1;
+    }
+
+    /**
+     * Sets the time a script is allowed to run. Negative values allow for infinite
+     * runtime
+     * 
+     * @param limit
+     * @param unit
+     */
+    public void setScriptRuntimeLimit(long limit, TimeUnit unit) {
+        scriptRuntimeLimit = unit.toMillis(limit);
+    }
+
+    /**
+     * Sets the memory limit of javascript execution to the given number of bytes
+     * 
+     * @param limit
+     */
+    public void setMemoryLimit(long limit) {
+        setMemoryLimit(getRuntimePointer(), limit);
+    }
+
+    /**
+     * Sets the maximum stack of javascript execution to the given number of bytes
+     * 
+     * @param limit
+     */
+    public void setMaxStackSize(long size) {
+        setMaxStackSize(getRuntimePointer(), size);
     }
 
     @Override

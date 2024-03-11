@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use jni::{
     objects::{JObject, JValue},
     signature::ReturnType,
@@ -17,7 +19,39 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSRuntime
     _obj: JObject<'a>,
 ) -> jlong {
     debug!("Created new QuickJS runtime");
-    Box::into_raw(Box::new(Runtime::new().unwrap())) as jlong
+
+    let runtime = Runtime::new().unwrap();
+
+    // Configure callback to runtime to allow java to interrupt running JS script
+    let target = Rc::new(_env.new_global_ref(_obj).unwrap());
+    let js_interrupt_id = _env
+        .get_method_id(
+            "com/github/stefanrichterhuber/quickjs/QuickJSRuntime",
+            "jsInterrupt",
+            "()Z",
+        )
+        .unwrap();
+    let vm = _env.get_java_vm().unwrap();
+
+    let handler = move || {
+        let mut env = vm.get_env().unwrap();
+
+        let result = unsafe {
+            env.call_method_unchecked(
+                target.as_ref(),
+                js_interrupt_id,
+                ReturnType::Primitive(jni::signature::Primitive::Boolean),
+                &[],
+            )
+            .unwrap()
+        };
+        let result = result.z().unwrap();
+        result
+    };
+
+    runtime.set_interrupt_handler(Some(Box::new(handler)));
+
+    Box::into_raw(Box::new(runtime)) as jlong
 }
 
 /// Converts a pointer to a runtime back to a Box<Runtime>.
@@ -42,6 +76,49 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSRuntime
     debug!("Closed QuickJS runtime");
     let runtime = ptr_to_runtime(runtime_ptr);
     drop(runtime);
+}
+
+/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSRuntime.setMemoryLimit(long ptr, long limit)
+#[no_mangle]
+pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSRuntime_setMemoryLimit<
+    'a,
+>(
+    mut _env: JNIEnv<'a>,
+    _obj: JObject<'a>,
+    runtime_ptr: jlong,
+    limit: jlong,
+) {
+    debug!("Setting QuickJS runtime memory limit to {} bytes", limit);
+    let runtime = ptr_to_runtime(runtime_ptr);
+
+    let limit = limit as usize;
+    runtime.set_memory_limit(limit);
+
+    // Prevents dropping the runtime
+    _ = runtime_to_ptr(runtime);
+}
+
+/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSRuntime.setMaxStackSize(long ptr, long limit)
+#[no_mangle]
+pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSRuntime_setMaxStackSize<
+    'a,
+>(
+    mut _env: JNIEnv<'a>,
+    _obj: JObject<'a>,
+    runtime_ptr: jlong,
+    limit: jlong,
+) {
+    debug!(
+        "Setting QuickJS runtime stack size limit to {} bytes",
+        limit
+    );
+    let runtime = ptr_to_runtime(runtime_ptr);
+
+    let limit = limit as usize;
+    runtime.set_max_stack_size(limit);
+
+    // Prevents dropping the runtime
+    _ = runtime_to_ptr(runtime);
 }
 
 struct JavaLogContext {
