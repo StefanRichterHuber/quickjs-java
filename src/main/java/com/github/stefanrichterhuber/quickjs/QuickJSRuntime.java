@@ -65,7 +65,8 @@ public class QuickJSRuntime implements AutoCloseable {
     private static native void setMaxStackSize(long ptr, long size);
 
     /**
-     * Number of milliseconds a script is allowed to run
+     * Number of milliseconds a script is allowed to run. Defaults to infinite
+     * runtime.
      */
     private long scriptRuntimeLimit = -1;
 
@@ -128,7 +129,7 @@ public class QuickJSRuntime implements AutoCloseable {
 
     /**
      * This method is called by the native code regularly to check if the execution
-     * of JS has be interrupted.
+     * of JS has to be interrupted.
      * The JS code continues to run as long as this method returns false.
      * Currently this used to implement a timeout for scripts.
      */
@@ -162,27 +163,33 @@ public class QuickJSRuntime implements AutoCloseable {
      * 
      * @param limit
      * @param unit
+     * @return this QuickJSRuntime instance for method chaining.
      */
-    public void setScriptRuntimeLimit(long limit, TimeUnit unit) {
+    public QuickJSRuntime withScriptRuntimeLimit(long limit, TimeUnit unit) {
         scriptRuntimeLimit = unit.toMillis(limit);
+        return this;
     }
 
     /**
      * Sets the memory limit of javascript execution to the given number of bytes
      * 
      * @param limit
+     * @return this QuickJSRuntime instance for method chaining.
      */
-    public void setMemoryLimit(long limit) {
+    public QuickJSRuntime withMemoryLimit(long limit) {
         setMemoryLimit(getRuntimePointer(), limit);
+        return this;
     }
 
     /**
      * Sets the maximum stack of javascript execution to the given number of bytes
      * 
      * @param limit
+     * @return this QuickJSRuntime instance for method chaining.
      */
-    public void setMaxStackSize(long size) {
+    public QuickJSRuntime setMaxStackSize(long size) {
         setMaxStackSize(getRuntimePointer(), size);
+        return this;
     }
 
     @Override

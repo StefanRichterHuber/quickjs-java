@@ -399,7 +399,7 @@ public class QuickJSContextTest {
         try (QuickJSRuntime runtime = new QuickJSRuntime();
                 QuickJSContext context = runtime.createContext()) {
 
-            runtime.setScriptRuntimeLimit(1, TimeUnit.SECONDS);
+            runtime.withScriptRuntimeLimit(1, TimeUnit.SECONDS);
 
             long startTime = System.currentTimeMillis();
 
