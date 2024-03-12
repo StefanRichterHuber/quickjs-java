@@ -1,6 +1,8 @@
+use crate::foreign_function;
 use crate::java_js_proxy::ProxiedJavaValue;
 use crate::js_java_proxy::JSJavaProxy;
 use crate::runtime::{ptr_to_runtime, runtime_to_ptr};
+use jni::objects::JObjectArray;
 use jni::{
     objects::{JObject, JString},
     sys::jlong,
@@ -76,7 +78,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
         match s {
             Ok(s) => s.into_jobject(&mut _env).unwrap(),
             Err(e) => {
-                handle_exception(e, ctx, &mut _env);
+                handle_exception(e, &ctx, &mut _env);
                 JObject::null()
             }
         }
@@ -89,7 +91,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
 }
 
 /// Handle JS errors. Extracts the message and throws a Java exception..
-fn handle_exception(e: Error, ctx: rquickjs::Ctx<'_>, _env: &mut JNIEnv<'_>) {
+pub(crate) fn handle_exception(e: Error, ctx: &rquickjs::Ctx<'_>, _env: &mut JNIEnv<'_>) {
     let msg = match e {
         Error::Exception => {
             let catch = ctx.catch();
@@ -131,7 +133,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
         match s {
             Ok(_) => {}
             Err(e) => {
-                handle_exception(e, ctx, &mut _env);
+                handle_exception(e, &ctx, &mut _env);
             }
         }
     });
@@ -159,7 +161,54 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
         match s {
             Ok(s) => s.into_jobject(&mut _env).unwrap(),
             Err(e) => {
-                handle_exception(e, ctx, &mut _env);
+                handle_exception(e, &ctx, &mut _env);
+                JObject::null()
+            }
+        }
+    });
+    // Prevents dropping the context
+    _ = context_to_ptr(context);
+    r
+}
+
+/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.invoke(long, String, Object... args)
+#[no_mangle]
+pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext_invoke<'a>(
+    mut _env: JNIEnv<'a>,
+    _obj: JObject<'a>,
+    context_ptr: jlong,
+    name: JString<'a>,
+    args: JObjectArray<'a>,
+) -> JObject<'a> {
+    let context = ptr_to_context(context_ptr);
+    let function_name: String = _env
+        .get_string(&name)
+        .expect("Couldn't get java string!")
+        .into();
+
+    let r = context.with(move |ctx| {
+        // First, try to a global object in the context with the given name
+        let f: Result<rquickjs::Value, _> = ctx.globals().get(&function_name);
+        match f {
+            Ok(f) => {
+                // Then check if the global object found is a function. If it is, invoke it with the given arguments. If it is not, throw an exception.
+                if f.is_function() {
+                    debug!("Invoking JS function with name {}", function_name);
+                    let func = f.as_function().unwrap();
+                    let result =
+                        foreign_function::invoke_js_function_with_java_parameters(_env, func, args);
+                    result
+                } else {
+                    _env.throw_new(
+                        "java/lang/Exception",
+                        format!("{} is not a function", function_name),
+                    )
+                    .unwrap();
+                    JObject::null()
+                }
+            }
+            Err(e) => {
+                handle_exception(e, &ctx, &mut _env);
                 JObject::null()
             }
         }

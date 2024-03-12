@@ -1,5 +1,7 @@
 package com.github.stefanrichterhuber.quickjs;
 
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.Collection;
@@ -18,6 +20,41 @@ import java.util.function.Supplier;
  * variables and finally evaluate JS code. It is not thread safe!
  */
 public class QuickJSContext implements AutoCloseable {
+    /**
+     * Invocation handler for java dynamic proxies which passes all method
+     * invocations to the underlying scripting context
+     */
+    private static class Proxy implements InvocationHandler {
+        private final String namespace;
+        private final QuickJSContext context;
+
+        Proxy(QuickJSContext context, String namespace) {
+            this.namespace = namespace;
+            this.context = context;
+        }
+
+        @Override
+        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+            if (method.isDefault()) {
+                return InvocationHandler.invokeDefault(proxy, method, args);
+            }
+            String name = method.getName();
+            if (namespace != null) {
+                name = namespace + "." + name;
+            }
+            return context.invoke(name, args);
+        }
+
+        @SuppressWarnings("unchecked")
+        static <T> T create(
+                QuickJSContext context, String namespace,
+                Class<T> clazz) {
+            return (T) java.lang.reflect.Proxy.newProxyInstance(clazz.getClassLoader(), new Class[] { clazz },
+                    new Proxy(context, namespace));
+        }
+
+    }
+
     private final QuickJSRuntime runtime;
     private long ptr;
 
@@ -30,6 +67,8 @@ public class QuickJSContext implements AutoCloseable {
     private native Object getGlobal(long ptr, String name);
 
     private native Object eval(long ptr, String script);
+
+    private native Object invoke(long ptr, String name, Object... args);
 
     /**
      * Keep a reference to all functions received to prevent memory leaks which
@@ -251,6 +290,43 @@ public class QuickJSContext implements AutoCloseable {
         } finally {
             this.runtime.scriptFinished();
         }
+    }
+
+    /**
+     * Invokes a JavaScript function and returns the result. It could be both a Java
+     * function passed to the context as well as a previously defined native JS
+     * function in the context.
+     * 
+     * @param name Name of the function to invoke
+     * @param args Arguments to pass to the function
+     * @return Result of the call
+     */
+    public Object invoke(String name, Object... args) {
+        this.runtime.scriptStarted();
+        try {
+            final Object result = this.invoke(getContextPointer(), name, args);
+            checkForDependentResources(result);
+            return result;
+        } finally {
+            this.runtime.scriptFinished();
+        }
+    }
+
+    /**
+     * Creates a script-backed dynamic proxy for the given interface class. All
+     * , but default methods (!), from the interface are passed as invoke to the
+     * script
+     * context.
+     * 
+     * @param <T>       Type of the interface to proxy
+     * @param namespace Optional name space (all method calls are prefixed with it.
+     *                  namespace = 'obj', method name = 'f' -> obj.f() is called);
+     *                  can be null
+     * @param clazz     Class of the interface to be proxied
+     * @return Proxied instance of the interface
+     */
+    public <T> T getInterface(String namespace, Class<T> clazz) {
+        return Proxy.create(this, namespace, clazz);
     }
 
     // Checks for context dependent resources like QuickJSFunction and add them to

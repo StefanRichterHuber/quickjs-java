@@ -396,6 +396,11 @@ public class QuickJSContextTest {
         }
     }
 
+    /**
+     * Runtime of any script execution can be limited in the QuickJSRuntime object
+     * 
+     * @throws Exception
+     */
     @Test
     public void limitRuntimeTest() throws Exception {
         try (QuickJSRuntime runtime = new QuickJSRuntime();
@@ -422,6 +427,12 @@ public class QuickJSContextTest {
         }
     }
 
+    /**
+     * Memory consumption of any script execution can be limited in the
+     * QuickJSRuntime object
+     * 
+     * @throws Exception
+     */
     @Test
     @Disabled("Takes too long")
     public void limitMemoryTest() throws Exception {
@@ -454,4 +465,63 @@ public class QuickJSContextTest {
         }
     }
 
+    /**
+     * One can call functions from java, both java functions passed to the script
+     * context as well as script native functions
+     */
+    @Test
+    public void invokeFunctionTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            context.setGlobal("f1", (String a) -> "Hello " + a);
+            context.eval("function f2(a) { return 'Hello from JS dear ' + a; };");
+
+            String r1 = (String) context.invoke("f1", "World");
+            assertEquals("Hello World", r1);
+
+            String r2 = (String) context.invoke("f2", "World");
+            assertEquals("Hello from JS dear World", r2);
+
+        }
+    }
+
+    public static interface TestInterface {
+        String f1(String name);
+
+        String f2(String name);
+
+        default String f3(String name) {
+            return "Hello from a default method dear " + name;
+        }
+    }
+
+    /**
+     * Interfaces could be proxied using Java dynamic proxies. All, but default,
+     * methods are proxied to the script environment. For method return types and
+     * parameter types, again all supported java types are supported.
+     * 
+     * @throws Exception
+     */
+    @Test
+    public void proxyTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            context.setGlobal("f1", (String a) -> "Hello " + a);
+            context.eval("function f2(a) { return 'Hello from JS dear ' + a; };");
+
+            TestInterface ti = context.getInterface(null, TestInterface.class);
+
+            String r1 = ti.f1("World");
+            assertEquals("Hello World", r1);
+
+            String r2 = ti.f2("World");
+            assertEquals("Hello from JS dear World", r2);
+
+            String r3 = ti.f3("World");
+            assertEquals("Hello from a default method dear World", r3);
+
+        }
+    }
 }
