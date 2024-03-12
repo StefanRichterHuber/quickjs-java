@@ -76,19 +76,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
         match s {
             Ok(s) => s.into_jobject(&mut _env).unwrap(),
             Err(e) => {
-                match e {
-                    Error::Exception => {
-                        let catch = ctx.catch();
-                        let execp = catch.as_exception().unwrap();
-                        let msg = format!("{:?}", execp);
-
-                        _env.throw_new("java/lang/Exception", msg).unwrap();
-                    }
-                    _ => {
-                        _env.throw_new("java/lang/Exception", e.to_string())
-                            .unwrap();
-                    }
-                }
+                handle_exception(e, ctx, &mut _env);
                 JObject::null()
             }
         }
@@ -98,6 +86,24 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
     _ = context_to_ptr(context);
 
     result
+}
+
+/// Handle JS errors. Extracts the message and throws a Java exception..
+fn handle_exception(e: Error, ctx: rquickjs::Ctx<'_>, _env: &mut JNIEnv<'_>) {
+    let msg = match e {
+        Error::Exception => {
+            let catch = ctx.catch();
+            if let Some(execp) = catch.as_exception() {
+                format!("{:?}", execp)
+            } else if let Some(msg) = catch.as_string() {
+                msg.to_string().unwrap()
+            } else {
+                format!("Unknown type of JS Error::Exception")
+            }
+        }
+        _ => e.to_string(),
+    };
+    _env.throw_new("java/lang/Exception", msg).unwrap();
 }
 
 /// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.setGlobal(long, String, Object)
@@ -124,23 +130,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
 
         match s {
             Ok(_) => {}
-            Err(e) => match e {
-                Error::Exception => {
-                    let catch = ctx.catch();
-
-                    if let Some(execp) = catch.as_exception() {
-                        let msg = format!("{:?}", execp);
-                        _env.throw_new("java/lang/Exception", msg).unwrap();
-                    } else if let Some(msg) = catch.as_string() {
-                        let msg = msg.to_string().unwrap();
-                        _env.throw_new("java/lang/Exception", msg).unwrap();
-                    }
-                }
-                _ => {
-                    _env.throw_new("java/lang/Exception", e.to_string())
-                        .unwrap();
-                }
-            },
+            Err(e) => {
+                handle_exception(e, ctx, &mut _env);
+            }
         }
     });
     // Prevents dropping the context
@@ -167,23 +159,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
         match s {
             Ok(s) => s.into_jobject(&mut _env).unwrap(),
             Err(e) => {
-                match e {
-                    Error::Exception => {
-                        let catch = ctx.catch();
-
-                        if let Some(execp) = catch.as_exception() {
-                            let msg = format!("{:?}", execp);
-                            _env.throw_new("java/lang/Exception", msg).unwrap();
-                        } else if let Some(msg) = catch.as_string() {
-                            let msg = msg.to_string().unwrap();
-                            _env.throw_new("java/lang/Exception", msg).unwrap();
-                        }
-                    }
-                    _ => {
-                        _env.throw_new("java/lang/Exception", e.to_string())
-                            .unwrap();
-                    }
-                }
+                handle_exception(e, ctx, &mut _env);
                 JObject::null()
             }
         }
