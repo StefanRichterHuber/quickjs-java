@@ -326,7 +326,11 @@ public class QuickJSContext implements AutoCloseable {
      * @return Proxied instance of the interface
      */
     public <T> T getInterface(String namespace, Class<T> clazz) {
-        return Proxy.create(this, namespace, clazz);
+        if (clazz.isInterface()) {
+            return Proxy.create(this, namespace, clazz);
+        } else {
+            throw new IllegalArgumentException("Class '" + clazz + "' is not an interface!");
+        }
     }
 
     // Checks for context dependent resources like QuickJSFunction and add them to
