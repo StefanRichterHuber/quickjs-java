@@ -499,7 +499,8 @@ public class QuickJSContextTest {
     /**
      * Interfaces could be proxied using Java dynamic proxies. All, but default,
      * methods are proxied to the script environment. For method return types and
-     * parameter types, again all supported java types are supported.
+     * parameter types, again all supported java types are supported. This allows
+     * for type-safe invocation of js functions.
      * 
      * @throws Exception
      */
@@ -513,15 +514,69 @@ public class QuickJSContextTest {
 
             TestInterface ti = context.getInterface(null, TestInterface.class);
 
+            // Call wrapped java function
             String r1 = ti.f1("World");
             assertEquals("Hello World", r1);
 
+            // Call native js function
             String r2 = ti.f2("World");
             assertEquals("Hello from JS dear World", r2);
 
+            // Call default function
             String r3 = ti.f3("World");
             assertEquals("Hello from a default method dear World", r3);
 
+        }
+    }
+
+    public static class TestClass {
+        public void call(String name) {
+            System.out.println(name);
+        }
+
+        public String f1(String name) {
+            return "Hello " + name;
+        }
+
+        @Override
+        public String toString() {
+            return "TestClass";
+        }
+    }
+
+    /**
+     * Test the utility method createMapOf which provides a rather incomplete
+     * mapping of generic objects into Maps of functions.
+     * 
+     * @throws Exception
+     */
+    @Test
+    public void objectMapTest() throws Exception {
+
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            Map<String, Object> m = QuickJSUtils.createMapOf(new TestClass());
+            assertNotNull(m);
+
+            context.setGlobal("tc", m);
+
+            Object r1 = context.eval("tc.f1('World')");
+            assertEquals("Hello World", r1);
+
+            Object r2 = context.eval("tc.toString()");
+            assertEquals("TestClass", r2);
+
+            Object r3 = context.eval("tc.hashCode()");
+            assertInstanceOf(Integer.class, r3);
+
+            context.invoke("tc.call", "World");
+
+            try {
+                context.invoke("tx.call", "World");
+            } catch (Exception e) {
+                // Expected since, tx does not exist
+            }
         }
     }
 }

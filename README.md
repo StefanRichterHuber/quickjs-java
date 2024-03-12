@@ -48,6 +48,17 @@ try (QuickJSRuntime runtime = new QuickJSRuntime();
     // Eval script. Always returns a (boxed) Object or null. Type-check and cast on the java side. See table of supported types below.
     Object v = context.eval("3 + 4");
     assertEquals(7, (Integer)v);
+
+    // Set both a function from java as well as create a native JS function
+    context.setGlobal("f1", (String a) -> "Hello " + a);
+    context.eval("function f2(a) { return 'Hello from JS dear ' + a; };");
+
+    // Both functions can be called by using invoke
+    String r1 = (String) context.invoke("f1", "World");
+    assertEquals("Hello World", r1);
+
+    String r2 = (String) context.invoke("f2", "World");
+    assertEquals("Hello from JS dear World", r2);
 }
 ```
 
@@ -60,7 +71,7 @@ All supported Java types can be used as globals, retrieved as globals or used as
 
 | Java type                                               |      JS Type            |  Remark                                                                                                                                                                       |
 |---------------------------------------------------------|:-----------------------:|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `null`                                                  | `null`                  | Both js `null` and undefined are mapped to Java `null`.                                                                                                                       |
+| `null`                                                  | `null`                  | Both js `null` and `undefined` are mapped to Java `null`.                                                                                                                       |
 | `java.lang.Integer`                                     | `int`                   | -                                                                                                                                                                             |
 | `java.lang.Double` / `java.lang.Float`                  | `float` ( 64-bit)       | rquickjs only supports 64-bit floats                                                                                                                                          |
 | `java.lang.String`                                      | `string`                | -                                                                                                                                                                             |
@@ -81,7 +92,7 @@ This library uses log4j2 for logging on the java side and the `log` crate on the
 ## TODO / Known issues
 
 - [ ] Add support for BigInteger and BigDecimal. Requires support from rquickjs library.
-- [x] Allow the user to stop script running to long
+- [x] Allow the user to stop script running too long
 - [ ] Fix issues around float values ( e.g. `eval("2.37")` results in an int `2`)
 - [ ] Support cross-build of native library in maven, so multiple arches are supported out-of-the box.
 - [ ] Fix issues with forwarding log messages from native to Java runtime at `trace` level. It results in an infinite loop, because JNI also logs at `trace` level.

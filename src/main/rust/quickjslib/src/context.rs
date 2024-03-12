@@ -9,7 +9,7 @@ use jni::{
     JNIEnv,
 };
 use log::debug;
-use rquickjs::{Context, Error};
+use rquickjs::{Context, Error, Value};
 
 // ----------------------------------------------------------------------------------------
 
@@ -187,13 +187,44 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
         .into();
 
     let r = context.with(move |ctx| {
+        let globals = ctx.globals();
+        let f: Result<rquickjs::Value, _> = if function_name.contains(".") {
+            let parts = function_name.split(".").collect::<Vec<&str>>();
+
+            let mut target = globals;
+            let function_name = parts.last().unwrap();
+            for i in 0..parts.len() - 1 {
+                let s: Result<Value, _> = target.get(parts[i]);
+                target = match s {
+                    Ok(s) => {
+                        if s.is_object() {
+                            s.into_object().unwrap()
+                        } else {
+                            _env.throw_new(
+                                "java/lang/Exception",
+                                format!("{} is not an object", parts[i]),
+                            )
+                            .unwrap();
+                            return JObject::null();
+                        }
+                    }
+                    Err(e) => {
+                        handle_exception(e, &ctx, &mut _env);
+                        return JObject::null();
+                    }
+                }
+            }
+            target.get(*function_name)
+        } else {
+            globals.get(&function_name)
+        };
+
         // First, try to a global object in the context with the given name
-        let f: Result<rquickjs::Value, _> = ctx.globals().get(&function_name);
         match f {
             Ok(f) => {
                 // Then check if the global object found is a function. If it is, invoke it with the given arguments. If it is not, throw an exception.
                 if f.is_function() {
-                    debug!("Invoking JS function with name {}", function_name);
+                    debug!("Invoking JS function with name {}()", function_name);
                     let func = f.as_function().unwrap();
                     let result =
                         foreign_function::invoke_js_function_with_java_parameters(_env, func, args);
