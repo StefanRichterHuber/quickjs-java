@@ -15,12 +15,15 @@ name = "quickjslib"
 crate-type = ["cdylib"]
 
 [dependencies]
+# All this dump-* features help debugging
 rquickjs = { version = "0.5.1", features = [
     #  "dump-objects",
     #  "dump-read-object",
     #  "dump-bytecode",
-    #  "rust-alloc",
 ] }
-lazy_static = "1.4.0"
-jni = { version = "0.21.1", features = ["invocation"] }
+jni = { version = "0.21" }
 log = { version = "0.4", features = ["std"] }
+
+[dev-dependencies]
+# Invocation feature is necessary for tests to spin up a VM
+jni = { version = "0.21", features = ["invocation"] }

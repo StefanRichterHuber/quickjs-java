@@ -2,7 +2,9 @@ package com.github.stefanrichterhuber.quickjs;
 
 import java.lang.ref.Cleaner;
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
@@ -10,12 +12,18 @@ import org.apache.logging.log4j.Logger;
 
 import io.questdb.jar.jni.JarJniLoader;
 
+/**
+ * QuickJSRuntime is the root object for managing QuickJS. It manages the
+ * resources (both memory and time) allowed to be used for scripts. It is not
+ * thread safe!
+ */
 public class QuickJSRuntime implements AutoCloseable {
     static final Cleaner CLEANER = Cleaner.create();
 
     private static final Logger LOGGER = LogManager.getLogger();
     private static final Logger NATIVE_LOGGER = LogManager.getLogger("[QuickJS native library]");
 
+    // Loads the native library and initializes logging
     static {
         JarJniLoader.loadLib(
                 QuickJSRuntime.class,
@@ -25,31 +33,76 @@ public class QuickJSRuntime implements AutoCloseable {
                 // needed.
                 "quickjslib");
 
-        if (LOGGER.getLevel() == Level.ERROR || LOGGER.getLevel() == Level.FATAL) {
+        if (NATIVE_LOGGER.getLevel() == Level.ERROR || LOGGER.getLevel() == Level.FATAL) {
             initLogging(1);
-        } else if (LOGGER.getLevel() == Level.WARN) {
+        } else if (NATIVE_LOGGER.getLevel() == Level.WARN) {
             initLogging(2);
-        } else if (LOGGER.getLevel() == Level.INFO) {
+        } else if (NATIVE_LOGGER.getLevel() == Level.INFO) {
             initLogging(3);
-        } else if (LOGGER.getLevel() == Level.DEBUG) {
+        } else if (NATIVE_LOGGER.getLevel() == Level.DEBUG) {
             initLogging(4);
-        } else if (LOGGER.getLevel() == Level.TRACE) {
+        } else if (NATIVE_LOGGER.getLevel() == Level.TRACE) {
             initLogging(5);
-        } else if (LOGGER.getLevel() == Level.OFF) {
+        } else if (NATIVE_LOGGER.getLevel() == Level.OFF) {
             initLogging(0);
         } else {
-            LOGGER.warn("Unknown log level " + LOGGER.getLevel() + " , using INFO for native library");
+            LOGGER.warn("Unknown log level " + NATIVE_LOGGER.getLevel() + " , using INFO for native library");
             initLogging(3);
         }
     }
 
+    // Pointer to native runtime
     private long ptr;
 
+    /**
+     * Creates a new native runtime
+     * 
+     * @return Pointer to the native runtime
+     */
     private native long createRuntime();
 
+    /**
+     * Closes the native runtime
+     * 
+     * @param ptr Pointer to the native runtime
+     */
     private static native void closeRuntime(long ptr);
 
+    /**
+     * Initializes the logging for the native library. Only allowed to be called
+     * once!
+     * 
+     * @param level Log level from 0 (off) to 5 (trace)
+     */
     private static native void initLogging(int level);
+
+    /**
+     * Sets the memory limit for the javascript runtime
+     * 
+     * @param ptr   Pointer to the native runtime
+     * @param limit Memory limit in bytes
+     */
+    private static native void setMemoryLimit(long ptr, long limit);
+
+    /**
+     * Sets the maximum stack size for the javascript runtime
+     * 
+     * @param ptr  Pointer to the native runtime
+     * @param size Limit in bytes
+     */
+    private static native void setMaxStackSize(long ptr, long size);
+
+    /**
+     * Number of milliseconds a script is allowed to run. Defaults to infinite
+     * runtime.
+     */
+    private long scriptRuntimeLimit = -1;
+
+    /**
+     * Time in milliseconds when the script was started. This is used to ensure the
+     * script meets its runtime limits
+     */
+    private long scriptStartTime = -1;
 
     /**
      * Keep a reference to all contexts created to prevent memory leaks which
@@ -60,8 +113,8 @@ public class QuickJSRuntime implements AutoCloseable {
     /**
      * This method is called by the native code to log a message.
      * 
-     * @param level
-     * @param message
+     * @param level   Log level
+     * @param message Message to log
      */
     static void runtimeLog(int level, String message) {
         switch (level) {
@@ -88,6 +141,9 @@ public class QuickJSRuntime implements AutoCloseable {
         }
     }
 
+    /**
+     * Creates a new QuickJSRuntime
+     */
     public QuickJSRuntime() {
         ptr = createRuntime();
     }
@@ -97,6 +153,70 @@ public class QuickJSRuntime implements AutoCloseable {
             throw new IllegalStateException("QuickJSRuntime closed");
         }
         return ptr;
+    }
+
+    /**
+     * This method is called by the native code regularly to check if the execution
+     * of JS has to be interrupted.
+     * The JS code continues to run as long as this method returns false.
+     * Currently this used to implement a timeout for scripts.
+     */
+    boolean jsInterrupt() {
+        if (this.scriptStartTime > 0 && scriptRuntimeLimit > 0) {
+            return !(System.currentTimeMillis() - scriptStartTime < scriptRuntimeLimit);
+        }
+        return false;
+    }
+
+    /**
+     * Callback called by QuickJSContext when a script is started
+     */
+    void scriptStarted() {
+        if (this.scriptRuntimeLimit > 0) {
+            scriptStartTime = System.currentTimeMillis();
+        }
+    }
+
+    /**
+     * Callback called by QuickJSContext when a script is started
+     */
+    void scriptFinished() {
+        this.scriptStartTime = -1;
+    }
+
+    /**
+     * Sets the time a script is allowed to run. Negative values allow for infinite
+     * runtime
+     * 
+     * @param limit Limit to set
+     * @param unit  Time Unit of the limit
+     * @return this QuickJSRuntime instance for method chaining.
+     */
+    public QuickJSRuntime withScriptRuntimeLimit(long limit, TimeUnit unit) {
+        scriptRuntimeLimit = unit.toMillis(limit);
+        return this;
+    }
+
+    /**
+     * Sets the memory limit of javascript execution to the given number of bytes
+     * 
+     * @param limit
+     * @return this QuickJSRuntime instance for method chaining.
+     */
+    public QuickJSRuntime withMemoryLimit(long limit) {
+        setMemoryLimit(getRuntimePointer(), limit);
+        return this;
+    }
+
+    /**
+     * Sets the maximum stack of javascript execution to the given number of bytes
+     * 
+     * @param limit
+     * @return this QuickJSRuntime instance for method chaining.
+     */
+    public QuickJSRuntime setMaxStackSize(long size) {
+        setMaxStackSize(getRuntimePointer(), size);
+        return this;
     }
 
     @Override
@@ -110,10 +230,25 @@ public class QuickJSRuntime implements AutoCloseable {
         }
     }
 
+    /**
+     * Creates a new independent QuickJS context. Each context has its own set of
+     * globals
+     * 
+     * @return QuickJSContext
+     */
     public QuickJSContext createContext() {
         QuickJSContext result = new QuickJSContext(this);
         this.dependedResources.add(result);
         return result;
     }
 
+    @Override
+    public boolean equals(Object obj) {
+        return obj instanceof QuickJSRuntime && ((QuickJSRuntime) obj).ptr == this.ptr;
+    }
+
+    @Override
+    public int hashCode() {
+        return ptr == 0 ? 0 : Objects.hash(ptr);
+    }
 }

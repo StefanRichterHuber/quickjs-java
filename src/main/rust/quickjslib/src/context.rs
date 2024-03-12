@@ -1,13 +1,15 @@
+use crate::foreign_function;
 use crate::java_js_proxy::ProxiedJavaValue;
 use crate::js_java_proxy::JSJavaProxy;
 use crate::runtime::{ptr_to_runtime, runtime_to_ptr};
+use jni::objects::JObjectArray;
 use jni::{
     objects::{JObject, JString},
     sys::jlong,
     JNIEnv,
 };
 use log::debug;
-use rquickjs::{Context, Error};
+use rquickjs::{Context, Error, Value};
 
 // ----------------------------------------------------------------------------------------
 
@@ -76,19 +78,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
         match s {
             Ok(s) => s.into_jobject(&mut _env).unwrap(),
             Err(e) => {
-                match e {
-                    Error::Exception => {
-                        let catch = ctx.catch();
-                        let execp = catch.as_exception().unwrap();
-                        let msg = format!("{:?}", execp);
-
-                        _env.throw_new("java/lang/Exception", msg).unwrap();
-                    }
-                    _ => {
-                        _env.throw_new("java/lang/Exception", e.to_string())
-                            .unwrap();
-                    }
-                }
+                handle_exception(e, &ctx, &mut _env);
                 JObject::null()
             }
         }
@@ -98,6 +88,24 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
     _ = context_to_ptr(context);
 
     result
+}
+
+/// Handle JS errors. Extracts the message and throws a Java exception..
+pub(crate) fn handle_exception(e: Error, ctx: &rquickjs::Ctx<'_>, _env: &mut JNIEnv<'_>) {
+    let msg = match e {
+        Error::Exception => {
+            let catch = ctx.catch();
+            if let Some(execp) = catch.as_exception() {
+                format!("{:?}", execp)
+            } else if let Some(msg) = catch.as_string() {
+                msg.to_string().unwrap()
+            } else {
+                format!("Unknown type of JS Error::Exception")
+            }
+        }
+        _ => e.to_string(),
+    };
+    _env.throw_new("java/lang/Exception", msg).unwrap();
 }
 
 /// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.setGlobal(long, String, Object)
@@ -124,19 +132,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
 
         match s {
             Ok(_) => {}
-            Err(e) => match e {
-                Error::Exception => {
-                    let catch = ctx.catch();
-                    let execp = catch.as_exception().unwrap();
-                    let msg = format!("{:?}", execp);
-
-                    _env.throw_new("java/lang/Exception", msg).unwrap();
-                }
-                _ => {
-                    _env.throw_new("java/lang/Exception", e.to_string())
-                        .unwrap();
-                }
-            },
+            Err(e) => {
+                handle_exception(e, &ctx, &mut _env);
+            }
         }
     });
     // Prevents dropping the context
@@ -163,23 +161,85 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
         match s {
             Ok(s) => s.into_jobject(&mut _env).unwrap(),
             Err(e) => {
-                match e {
-                    Error::Exception => {
-                        let catch = ctx.catch();
+                handle_exception(e, &ctx, &mut _env);
+                JObject::null()
+            }
+        }
+    });
+    // Prevents dropping the context
+    _ = context_to_ptr(context);
+    r
+}
 
-                        if let Some(execp) = catch.as_exception() {
-                            let msg = format!("{:?}", execp);
-                            _env.throw_new("java/lang/Exception", msg).unwrap();
-                        } else if let Some(msg) = catch.as_string() {
-                            let msg = msg.to_string().unwrap();
-                            _env.throw_new("java/lang/Exception", msg).unwrap();
+/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.invoke(long, String, Object... args)
+#[no_mangle]
+pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext_invoke<'a>(
+    mut _env: JNIEnv<'a>,
+    _obj: JObject<'a>,
+    context_ptr: jlong,
+    name: JString<'a>,
+    args: JObjectArray<'a>,
+) -> JObject<'a> {
+    let context = ptr_to_context(context_ptr);
+    let function_name: String = _env
+        .get_string(&name)
+        .expect("Couldn't get java string!")
+        .into();
+
+    let r = context.with(move |ctx| {
+        let globals = ctx.globals();
+        let f: Result<rquickjs::Value, _> = if function_name.contains(".") {
+            let parts = function_name.split(".").collect::<Vec<&str>>();
+
+            let mut target = globals;
+            let function_name = parts.last().unwrap();
+            for i in 0..parts.len() - 1 {
+                let s: Result<Value, _> = target.get(parts[i]);
+                target = match s {
+                    Ok(s) => {
+                        if s.is_object() {
+                            s.into_object().unwrap()
+                        } else {
+                            _env.throw_new(
+                                "java/lang/Exception",
+                                format!("{} is not an object", parts[i]),
+                            )
+                            .unwrap();
+                            return JObject::null();
                         }
                     }
-                    _ => {
-                        _env.throw_new("java/lang/Exception", e.to_string())
-                            .unwrap();
+                    Err(e) => {
+                        handle_exception(e, &ctx, &mut _env);
+                        return JObject::null();
                     }
                 }
+            }
+            target.get(*function_name)
+        } else {
+            globals.get(&function_name)
+        };
+
+        // First, try to a global object in the context with the given name
+        match f {
+            Ok(f) => {
+                // Then check if the global object found is a function. If it is, invoke it with the given arguments. If it is not, throw an exception.
+                if f.is_function() {
+                    debug!("Invoking JS function with name {}()", function_name);
+                    let func = f.as_function().unwrap();
+                    let result =
+                        foreign_function::invoke_js_function_with_java_parameters(_env, func, args);
+                    result
+                } else {
+                    _env.throw_new(
+                        "java/lang/Exception",
+                        format!("{} is not a function", function_name),
+                    )
+                    .unwrap();
+                    JObject::null()
+                }
+            }
+            Err(e) => {
+                handle_exception(e, &ctx, &mut _env);
                 JObject::null()
             }
         }

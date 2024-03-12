@@ -3,14 +3,19 @@ package com.github.stefanrichterhuber.quickjs;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 public class QuickJSContextTest {
@@ -233,12 +238,32 @@ public class QuickJSContextTest {
     }
 
     /**
+     * Java object arrays are converted to js arrays
+     * 
+     * @throws Exception
+     */
+    @Test
+    public void arrayTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            context.setGlobal("vs", new Object[] { "a", "b", "c" });
+            Object result = context.eval("vs");
+            assertEquals(3, ((List<?>) result).size());
+            assertEquals("a", ((List<?>) result).get(0));
+            assertEquals("b", ((List<?>) result).get(1));
+            assertEquals("c", ((List<?>) result).get(2));
+        }
+    }
+
+    /**
      * JS arrays are converted to java.util.List and vice versa
      */
     @Test
     public void listTest() throws Exception {
         try (QuickJSRuntime runtime = new QuickJSRuntime();
                 QuickJSContext context = runtime.createContext()) {
+
             {
                 Object result = context.eval("[1, 2, 3];");
                 assertInstanceOf(List.class, result);
@@ -371,4 +396,187 @@ public class QuickJSContextTest {
         }
     }
 
+    /**
+     * Runtime of any script execution can be limited in the QuickJSRuntime object
+     * 
+     * @throws Exception
+     */
+    @Test
+    public void limitRuntimeTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            runtime.withScriptRuntimeLimit(1, TimeUnit.SECONDS);
+
+            long startTime = System.currentTimeMillis();
+
+            try {
+                // This never finishes without interruption
+                context.eval("while (true) {  }");
+                fail("This should never happen, because there is an endless loop before");
+
+            } catch (Exception e) {
+                assertTrue(e.getMessage().contains("interrupted"));
+                // Expected exception due to interruption
+                long endTime = System.currentTimeMillis();
+                long duration = endTime - startTime;
+                // Should be exactly 1 second, give it some extra time
+                assertTrue(duration < 1500);
+            }
+
+        }
+    }
+
+    /**
+     * Memory consumption of any script execution can be limited in the
+     * QuickJSRuntime object
+     * 
+     * @throws Exception
+     */
+    @Test
+    @Disabled("Takes too long")
+    public void limitMemoryTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            // We need a huge memory limit just for the callback, and some bytes extra for
+            // the array
+            runtime.withMemoryLimit(90000);
+
+            AtomicInteger ai = new AtomicInteger(0);
+
+            context.setGlobal("f", (List<Integer> l) -> {
+                // Log the size of the array
+                ai.set(l.size());
+            });
+
+            try {
+
+                // This never finishes without hitting memory limit
+                var obj = context.eval(
+                        "const nrs = []; while (true) { nrs.push(5); f(nrs); }");
+                fail("This should never happen, because there is an endless loop before");
+
+            } catch (Exception e) {
+                assertTrue(e.getMessage().contains("out of memory"));
+                // Eventually we arrive here
+                assertTrue(ai.get() < 2000);
+            }
+        }
+    }
+
+    /**
+     * One can call functions from java, both java functions passed to the script
+     * context as well as script native functions
+     */
+    @Test
+    public void invokeFunctionTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            context.setGlobal("f1", (String a) -> "Hello " + a);
+            context.eval("function f2(a) { return 'Hello from JS dear ' + a; };");
+
+            String r1 = (String) context.invoke("f1", "World");
+            assertEquals("Hello World", r1);
+
+            String r2 = (String) context.invoke("f2", "World");
+            assertEquals("Hello from JS dear World", r2);
+
+        }
+    }
+
+    public static interface TestInterface {
+        String f1(String name);
+
+        String f2(String name);
+
+        default String f3(String name) {
+            return "Hello from a default method dear " + name;
+        }
+    }
+
+    /**
+     * Interfaces could be proxied using Java dynamic proxies. All, but default,
+     * methods are proxied to the script environment. For method return types and
+     * parameter types, again all supported java types are supported. This allows
+     * for type-safe invocation of js functions.
+     * 
+     * @throws Exception
+     */
+    @Test
+    public void proxyTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            context.setGlobal("f1", (String a) -> "Hello " + a);
+            context.eval("function f2(a) { return 'Hello from JS dear ' + a; };");
+
+            TestInterface ti = context.getInterface(null, TestInterface.class);
+
+            // Call wrapped java function
+            String r1 = ti.f1("World");
+            assertEquals("Hello World", r1);
+
+            // Call native js function
+            String r2 = ti.f2("World");
+            assertEquals("Hello from JS dear World", r2);
+
+            // Call default function
+            String r3 = ti.f3("World");
+            assertEquals("Hello from a default method dear World", r3);
+
+        }
+    }
+
+    public static class TestClass {
+        public void call(String name) {
+            System.out.println(name);
+        }
+
+        public String f1(String name) {
+            return "Hello " + name;
+        }
+
+        @Override
+        public String toString() {
+            return "TestClass";
+        }
+    }
+
+    /**
+     * Test the utility method createMapOf which provides a rather incomplete
+     * mapping of generic objects into Maps of functions.
+     * 
+     * @throws Exception
+     */
+    @Test
+    public void objectMapTest() throws Exception {
+
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            Map<String, Object> m = QuickJSUtils.createMapOf(new TestClass());
+            assertNotNull(m);
+
+            context.setGlobal("tc", m);
+
+            Object r1 = context.eval("tc.f1('World')");
+            assertEquals("Hello World", r1);
+
+            Object r2 = context.eval("tc.toString()");
+            assertEquals("TestClass", r2);
+
+            Object r3 = context.eval("tc.hashCode()");
+            assertInstanceOf(Integer.class, r3);
+
+            context.invoke("tc.call", "World");
+
+            try {
+                context.invoke("tx.call", "World");
+            } catch (Exception e) {
+                // Expected since, tx does not exist
+            }
+        }
+    }
 }
