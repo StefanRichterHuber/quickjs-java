@@ -14,7 +14,7 @@ impl<'js> FromJs<'js> for JSJavaProxy<'js> {
     }
 }
 
-impl<'js, 'vm, 'r> JSJavaProxy<'js> {
+impl<'js, 'vm> JSJavaProxy<'js> {
     pub fn new(value: Value<'js>) -> Self {
         JSJavaProxy { value }
     }
@@ -47,7 +47,6 @@ impl<'js, 'vm, 'r> JSJavaProxy<'js> {
                 let value = value.unwrap();
                 let value = value.into_jobject(env);
 
-                // TODO cache method id for better performance
                 if let Some(v) = value {
                     unsafe {
                         env.call_method_unchecked(
@@ -102,7 +101,6 @@ impl<'js, 'vm, 'r> JSJavaProxy<'js> {
                 )
                 .unwrap();
 
-            // TODO cache method id for better performance
             for v in obj.keys() {
                 let key: String = v.unwrap();
                 let k = env.new_string(&key).unwrap();
