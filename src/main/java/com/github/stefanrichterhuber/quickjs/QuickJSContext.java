@@ -314,19 +314,24 @@ public class QuickJSContext implements AutoCloseable {
 
     /**
      * Creates a script-backed dynamic proxy for the given interface class. All
-     * , but default methods (!), from the interface are passed as invoke to the
-     * script
-     * context.
+     * , but default methods (!), from the interface are passed as
+     * {@link #invoke(String, Object...)} to the
+     * script context. This gives the ability to have type-safe interfaces to the
+     * scripting environment.
      * 
      * @param <T>       Type of the interface to proxy
      * @param namespace Optional name space (all method calls are prefixed with it.
      *                  namespace = 'obj', method name = 'f' -> obj.f() is called);
+     *                  Nested namespaces supported (eg. obj.o.f())
      *                  can be null
      * @param clazz     Class of the interface to be proxied
      * @return Proxied instance of the interface
      */
     public <T> T getInterface(String namespace, Class<T> clazz) {
-        return Proxy.create(this, namespace, clazz);
+        return Proxy.create(this,
+                namespace != null && namespace.endsWith(".") ? namespace.substring(0, namespace.length() - 1)
+                        : namespace,
+                clazz);
     }
 
     // Checks for context dependent resources like QuickJSFunction and add them to
