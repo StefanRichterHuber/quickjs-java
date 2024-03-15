@@ -106,6 +106,15 @@ public class QuickJSContextTest {
                 context.eval("d('Hello')");
                 assertEquals("Hello", result.join());
             }
+            // BiConsumer
+            {
+                CompletableFuture<String> result = new CompletableFuture<>();
+                context.setGlobal("e", (a, b) -> {
+                    result.complete(a.toString() + " " + b.toString());
+                });
+                context.eval("e('Hello', 'World')");
+                assertEquals("Hello World", result.join());
+            }
         }
     }
 

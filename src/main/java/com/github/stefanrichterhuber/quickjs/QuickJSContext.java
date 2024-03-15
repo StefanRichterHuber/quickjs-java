@@ -11,6 +11,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -301,6 +302,16 @@ public class QuickJSContext implements AutoCloseable {
      * @param value Value of the function
      */
     public void setGlobal(String name, Consumer<?> f) {
+        this.setGlobal(getContextPointer(), name, f);
+    }
+
+    /**
+     * Adds a global function to the context.
+     * 
+     * @param name  Name of the function
+     * @param value Value of the function
+     */
+    public void setGlobal(String name, BiConsumer<?, ?> f) {
         this.setGlobal(getContextPointer(), name, f);
     }
 

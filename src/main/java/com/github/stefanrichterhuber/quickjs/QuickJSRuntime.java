@@ -211,8 +211,8 @@ public class QuickJSRuntime implements AutoCloseable {
      * Callback called by QuickJSContext when a script is started
      */
     void scriptStarted() {
-        LOGGER.debug("Script started at time {}", scriptStartTime);
         scriptStartTime = System.currentTimeMillis();
+        LOGGER.debug("Script started at time {}", scriptStartTime);
     }
 
     /**

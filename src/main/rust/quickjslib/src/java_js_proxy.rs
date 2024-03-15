@@ -228,6 +228,42 @@ impl ProxiedJavaValue {
         ProxiedJavaValue::JSFUNCTION(ptr)
     }
 
+    /// Wraps a java.util.function.BiConsumer into a JS function
+    fn from_biconsumer<'vm>(env: &mut JNIEnv<'vm>, obj: JObject<'vm>) -> Self {
+        let target = Rc::new(env.new_global_ref(obj).unwrap());
+        // https://github.com/jni-rs/jni-rs/issues/488#issuecomment-1699852154
+        let vm = env.get_java_vm().unwrap();
+
+        let f = move |v1: Value, v2: Value| {
+            let mut env = vm.get_env().unwrap();
+
+            let p1 = JSJavaProxy::new(v1).into_jobject(&mut env).unwrap();
+            let p2 = JSJavaProxy::new(v2).into_jobject(&mut env).unwrap();
+            let _call_result = env
+                .call_method(
+                    target.as_ref(),
+                    "accept",
+                    "(Ljava/lang/Object;Ljava/lang/Object;)V",
+                    &[
+                        jni::objects::JValueGen::Object(&p1),
+                        jni::objects::JValueGen::Object(&p2),
+                    ],
+                )
+                .unwrap();
+
+            let result = if env.exception_check().unwrap() {
+                let exception = env.exception_occurred().unwrap();
+                ProxiedJavaValue::from_throwable(&mut env, exception)
+            } else {
+                ProxiedJavaValue::from_null()
+            };
+
+            result
+        };
+        debug!("Create JS function from Java Bi Consumer<Object, Object>",);
+        ProxiedJavaValue::BIFUNCTION(Box::new(f))
+    }
+
     /// Wraps a java.util.function.Consumer into a JS function
     fn from_consumer<'vm>(env: &mut JNIEnv<'vm>, obj: JObject<'vm>) -> Self {
         let target = Rc::new(env.new_global_ref(obj).unwrap());
@@ -238,12 +274,14 @@ impl ProxiedJavaValue {
             let mut env = vm.get_env().unwrap();
 
             let p1 = JSJavaProxy::new(v1).into_jobject(&mut env).unwrap();
-            let _call_result: errors::Result<JValueGen<JObject<'_>>> = env.call_method(
-                target.as_ref(),
-                "accept",
-                "(Ljava/lang/Object;)V",
-                &[jni::objects::JValueGen::Object(&p1)],
-            );
+            let _call_result = env
+                .call_method(
+                    target.as_ref(),
+                    "accept",
+                    "(Ljava/lang/Object;)V",
+                    &[jni::objects::JValueGen::Object(&p1)],
+                )
+                .unwrap();
 
             let result = if env.exception_check().unwrap() {
                 let exception = env.exception_occurred().unwrap();
@@ -455,6 +493,8 @@ impl ProxiedJavaValue {
             ProxiedJavaValue::from_map(env, obj)
         } else if ProxiedJavaValue::is_instance_of("java/util/function/Consumer", env, &obj) {
             ProxiedJavaValue::from_consumer(env, obj)
+        } else if ProxiedJavaValue::is_instance_of("java/util/function/BiConsumer", env, &obj) {
+            ProxiedJavaValue::from_biconsumer(env, obj)
         } else if ProxiedJavaValue::is_instance_of("java/util/function/BiFunction", env, &obj) {
             ProxiedJavaValue::from_bifunction(env, obj)
         } else if ProxiedJavaValue::is_instance_of("java/util/function/Supplier", env, &obj) {
