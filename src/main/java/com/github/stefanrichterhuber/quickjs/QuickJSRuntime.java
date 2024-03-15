@@ -1,6 +1,7 @@
 package com.github.stefanrichterhuber.quickjs;
 
 import java.lang.ref.Cleaner;
+import java.lang.ref.Cleaner.Cleanable;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -19,9 +20,39 @@ import io.questdb.jar.jni.JarJniLoader;
  */
 public class QuickJSRuntime implements AutoCloseable {
     static final Cleaner CLEANER = Cleaner.create();
+    private final Cleanable cleanable;
+    private final CleanJob cleanJob;
 
     private static final Logger LOGGER = LogManager.getLogger();
     private static final Logger NATIVE_LOGGER = LogManager.getLogger("[QuickJS native library]");
+
+    private static class CleanJob implements Runnable {
+        private long ptr;
+        /**
+         * Keep a reference to all contexts created to prevent memory leaks which
+         * results in errors when closing the runtime
+         */
+        final Set<AutoCloseable> dependedResources = new HashSet<>();
+
+        public CleanJob(final long ptr) {
+            this.ptr = ptr;
+        }
+
+        @Override
+        public void run() {
+            if (ptr != 0) {
+                for (AutoCloseable f : dependedResources) {
+                    try {
+                        f.close();
+                    } catch (Exception e) {
+                        LOGGER.error("Failed to close runtime dependent resource", e);
+                    }
+                }
+                closeRuntime(ptr);
+                ptr = 0;
+            }
+        }
+    }
 
     // Loads the native library and initializes logging
     static {
@@ -51,7 +82,9 @@ public class QuickJSRuntime implements AutoCloseable {
         }
     }
 
-    // Pointer to native runtime
+    /**
+     * Pointer to native runtime
+     */
     private long ptr;
 
     /**
@@ -105,12 +138,6 @@ public class QuickJSRuntime implements AutoCloseable {
     private long scriptStartTime = -1;
 
     /**
-     * Keep a reference to all contexts created to prevent memory leaks which
-     * results in errors when closing the runtime
-     */
-    private final Set<AutoCloseable> dependedResources = new HashSet<>();
-
-    /**
      * This method is called by the native code to log a message.
      * 
      * @param level   Log level
@@ -146,8 +173,15 @@ public class QuickJSRuntime implements AutoCloseable {
      */
     public QuickJSRuntime() {
         ptr = createRuntime();
+        this.cleanJob = new CleanJob(ptr);
+        this.cleanable = CLEANER.register(this, this.cleanJob);
     }
 
+    /**
+     * Returns the native pointer to the QuickJSRuntime
+     * 
+     * @return
+     */
     long getRuntimePointer() {
         if (ptr == 0) {
             throw new IllegalStateException("QuickJSRuntime closed");
@@ -163,24 +197,31 @@ public class QuickJSRuntime implements AutoCloseable {
      */
     boolean jsInterrupt() {
         if (this.scriptStartTime > 0 && scriptRuntimeLimit > 0) {
-            return !(System.currentTimeMillis() - scriptStartTime < scriptRuntimeLimit);
+            final boolean result = !(System.currentTimeMillis() - scriptStartTime < scriptRuntimeLimit);
+            if (result) {
+                LOGGER.debug("Script runtime limit of {} ms reached, interrupting script", scriptRuntimeLimit);
+            }
+            return result;
         }
         return false;
+
     }
 
     /**
      * Callback called by QuickJSContext when a script is started
      */
     void scriptStarted() {
-        if (this.scriptRuntimeLimit > 0) {
-            scriptStartTime = System.currentTimeMillis();
-        }
+        LOGGER.debug("Script started at time {}", scriptStartTime);
+        scriptStartTime = System.currentTimeMillis();
     }
 
     /**
      * Callback called by QuickJSContext when a script is started
      */
     void scriptFinished() {
+
+        LOGGER.debug("Script finished at time {}. Total runtime {} ms", () -> System.currentTimeMillis(),
+                () -> System.currentTimeMillis() - scriptStartTime);
         this.scriptStartTime = -1;
     }
 
@@ -221,13 +262,7 @@ public class QuickJSRuntime implements AutoCloseable {
 
     @Override
     public void close() throws Exception {
-        if (ptr != 0) {
-            for (AutoCloseable f : dependedResources) {
-                f.close();
-            }
-            closeRuntime(ptr);
-            ptr = 0;
-        }
+        cleanable.clean();
     }
 
     /**
@@ -238,10 +273,13 @@ public class QuickJSRuntime implements AutoCloseable {
      */
     public QuickJSContext createContext() {
         QuickJSContext result = new QuickJSContext(this);
-        this.dependedResources.add(result);
+        this.cleanJob.dependedResources.add(result);
         return result;
     }
 
+    /**
+     * QuickJS runtimes are equal by their native pointer
+     */
     @Override
     public boolean equals(Object obj) {
         return obj instanceof QuickJSRuntime && ((QuickJSRuntime) obj).ptr == this.ptr;

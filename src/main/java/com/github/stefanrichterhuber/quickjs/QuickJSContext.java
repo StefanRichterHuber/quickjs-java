@@ -1,5 +1,7 @@
 package com.github.stefanrichterhuber.quickjs;
 
+import java.lang.ref.Cleaner;
+import java.lang.ref.Cleaner.Cleanable;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
@@ -14,12 +16,49 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 /**
  * QuickJSContext is a independent namespace with its own set of globals. With
  * this instance we interact with the QuickJS runtime, set and get global
  * variables and finally evaluate JS code. It is not thread safe!
  */
 public class QuickJSContext implements AutoCloseable {
+    private static final Logger LOGGER = LogManager.getLogger();
+
+    static final Cleaner CLEANER = Cleaner.create();
+    private final Cleanable cleanable;
+    private final CleanJob cleanJob;
+
+    private static class CleanJob implements Runnable {
+        private long ptr;
+        /**
+         * Keep a reference to all contexts created to prevent memory leaks which
+         * results in errors when closing the runtime
+         */
+        final Set<AutoCloseable> dependedResources = new HashSet<>();
+
+        public CleanJob(final long ptr) {
+            this.ptr = ptr;
+        }
+
+        @Override
+        public void run() {
+            if (ptr != 0) {
+                for (AutoCloseable f : dependedResources) {
+                    try {
+                        f.close();
+                    } catch (Exception e) {
+                        LOGGER.error("Failed to close runtime dependent resource", e);
+                    }
+                }
+                closeContext(ptr);
+                ptr = 0;
+            }
+        }
+    }
+
     /**
      * Invocation handler for java dynamic proxies which passes all method
      * invocations to the underlying scripting context
@@ -58,9 +97,9 @@ public class QuickJSContext implements AutoCloseable {
     private final QuickJSRuntime runtime;
     private long ptr;
 
-    private native long createContext(long runtimePtr);
+    private static native long createContext(long runtimePtr);
 
-    private native void closeContext(long ptr);
+    private static native void closeContext(long ptr);
 
     private native void setGlobal(long ptr, String name, Object value);
 
@@ -70,21 +109,9 @@ public class QuickJSContext implements AutoCloseable {
 
     private native Object invoke(long ptr, String name, Object... args);
 
-    /**
-     * Keep a reference to all functions received to prevent memory leaks which
-     * results in errors when closing the context
-     */
-    private final Set<AutoCloseable> dependedResources = new HashSet<>();
-
     @Override
     public void close() throws Exception {
-        if (ptr != 0) {
-            for (AutoCloseable f : dependedResources) {
-                f.close();
-            }
-            closeContext(ptr);
-            ptr = 0;
-        }
+        this.cleanable.clean();
     }
 
     /**
@@ -95,6 +122,8 @@ public class QuickJSContext implements AutoCloseable {
     QuickJSContext(QuickJSRuntime runtime) {
         this.runtime = runtime;
         this.ptr = createContext(runtime.getRuntimePointer());
+        this.cleanJob = new CleanJob(ptr);
+        this.cleanable = CLEANER.register(this, this.cleanJob);
     }
 
     /**
@@ -279,7 +308,8 @@ public class QuickJSContext implements AutoCloseable {
      * Evaluates a JavaScript script and returns the result.
      * 
      * @param script Script to execute
-     * @return Result from the script
+     * @return Result from the script. Will be either null, or of one of the
+     *         supported java types
      */
     public Object eval(String script) {
         this.runtime.scriptStarted();
@@ -299,7 +329,9 @@ public class QuickJSContext implements AutoCloseable {
      * 
      * @param name Name of the function to invoke
      * @param args Arguments to pass to the function
-     * @return Result of the call
+     * @return n Result from the function call. Will be either null, or of one of
+     *         the
+     *         supported java types
      */
     public Object invoke(String name, Object... args) {
         this.runtime.scriptStarted();
@@ -334,12 +366,14 @@ public class QuickJSContext implements AutoCloseable {
                 clazz);
     }
 
-    // Checks for context dependent resources like QuickJSFunction and add them to
-    // the clean up list
+    /**
+     * Checks for context dependent resources like QuickJSFunction and add them to
+     * the clean up list
+     */
     void checkForDependentResources(Object result) {
         if (result instanceof QuickJSFunction) {
             var f = (QuickJSFunction) result;
-            dependedResources.add(f);
+            this.cleanJob.dependedResources.add(f);
             f.setCtx(this);
         }
         if (result instanceof Collection) {
@@ -352,6 +386,9 @@ public class QuickJSContext implements AutoCloseable {
         }
     }
 
+    /**
+     * QuickJS contexts are equal by their native pointer
+     */
     @Override
     public boolean equals(Object obj) {
         return obj instanceof QuickJSContext && ((QuickJSContext) obj).ptr == this.ptr;
