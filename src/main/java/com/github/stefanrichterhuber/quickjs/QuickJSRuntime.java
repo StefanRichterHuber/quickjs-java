@@ -62,7 +62,7 @@ public class QuickJSRuntime implements AutoCloseable {
                 "/libs",
                 // The "lib" prefix and ".so|.dynlib|.dll" suffix are added automatically as
                 // needed.
-                "quickjslib");
+                "javaquickjs");
 
         if (NATIVE_LOGGER.getLevel() == Level.ERROR || LOGGER.getLevel() == Level.FATAL) {
             initLogging(1);
