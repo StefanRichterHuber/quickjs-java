@@ -47,7 +47,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSFunctio
         .get_field(
             &_obj,
             "ctx",
-            "Lcom.github.stefanrichterhuber.quickjs.QuickJSContext;",
+            "Lcom/github/stefanrichterhuber/quickjs/QuickJSContext;",
         )
         .unwrap()
         .l()

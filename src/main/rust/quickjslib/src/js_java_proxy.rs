@@ -77,19 +77,26 @@ impl<'js, 'vm> JSJavaProxy<'js> {
                 .find_class("com/github/stefanrichterhuber/quickjs/QuickJSFunction")
                 .expect("Failed to load the target class");
 
-            let result = env
-                .new_object(
-                    js_function_class,
-                    "(JL com.github.stefanrichterhuber.quickjs.QuickJSContext;)V",
-                    &[
-                        jni::objects::JValueGen::Long(ptr),
-                        jni::objects::JValueGen::Object(&context),
-                    ],
-                )
-                .unwrap();
-            debug!("Map JS function to Java com.github.stefanrichterhuber.quickjs.QuickJSFunction with id {}", ptr
+            let result = env.new_object(
+                js_function_class,
+                "(JLcom/github/stefanrichterhuber/quickjs/QuickJSContext;)V",
+                &[
+                    jni::objects::JValueGen::Long(ptr),
+                    jni::objects::JValueGen::Object(context),
+                ],
             );
-            return Some(result);
+
+            match result {
+                Ok(result) => {
+                    debug!("Map JS function to Java com.github.stefanrichterhuber.quickjs.QuickJSFunction with id {}", ptr
+                    );
+                    return Some(result);
+                }
+                Err(e) => {
+                    error!("Failed to create a new object: {}", e);
+                    return None;
+                }
+            }
         } else if self.value.is_object() {
             debug!("Map JS object to Java java.util.HashMap",);
             let obj = self.value.as_object().unwrap();
