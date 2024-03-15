@@ -167,10 +167,9 @@ public class QuickJSContextTest {
             {
                 Function<QuickJSFunction, String> f1 = f -> {
                     // Closing the function is necessary to prevent memory leaks
-                    try (QuickJSFunction f2 = f) {
-                        var r = f2.call("hello") + "!";
-                        return r;
-                    }
+                    QuickJSFunction f2 = f;
+                    var r = f2.call("hello") + "!";
+                    return r;
                 };
                 context.setGlobal("f10", f1);
                 assertEquals("hello world!", context.eval("let f = function(v) { return v + ' world'; };f10(f)"));
@@ -196,41 +195,38 @@ public class QuickJSContextTest {
             {
                 Object v = context.eval("let a = function() { return 'hello'; }; a");
                 assertInstanceOf(QuickJSFunction.class, v);
-                try (QuickJSFunction f = (QuickJSFunction) v) {
-                    assertEquals("hello", f.call());
-                }
+                QuickJSFunction f = (QuickJSFunction) v;
+                assertEquals("hello", f.call());
+
             }
             // One parameter
             {
                 Object v = context.eval("let b = function(v) { return 'hello ' + v; }; b");
                 assertInstanceOf(QuickJSFunction.class, v);
-                try (QuickJSFunction f = (QuickJSFunction) v) {
-                    assertEquals("hello world", f.call("world"));
-                }
+                QuickJSFunction f = (QuickJSFunction) v;
+                assertEquals("hello world", f.call("world"));
             }
             // Two parameters
             {
                 Object v = context.eval("let c = function(v1, v2) { return v1 + ' ' + v2; };c");
                 assertInstanceOf(QuickJSFunction.class, v);
-                try (QuickJSFunction f = (QuickJSFunction) v) {
-                    assertEquals("hello world", f.call("hello", "world"));
-                }
+                QuickJSFunction f = (QuickJSFunction) v;
+                assertEquals("hello world", f.call("hello", "world"));
             }
             // Call multiple times to ensure stability
             {
                 Object v = context.eval("let d = function() { return 'hello'; }; d");
                 assertInstanceOf(QuickJSFunction.class, v);
-                try (QuickJSFunction f = (QuickJSFunction) v) {
-                    assertEquals("hello", f.call());
-                    assertEquals("hello", f.call());
-                    assertEquals("hello", f.call());
-                    assertEquals("hello", f.call());
-                    assertEquals("hello", f.call());
-                    assertEquals("hello", f.call());
-                    assertEquals("hello", f.call());
-                    assertEquals("hello", f.call());
-                    assertEquals("hello", f.call());
-                }
+                QuickJSFunction f = (QuickJSFunction) v;
+                assertEquals("hello", f.call());
+                assertEquals("hello", f.call());
+                assertEquals("hello", f.call());
+                assertEquals("hello", f.call());
+                assertEquals("hello", f.call());
+                assertEquals("hello", f.call());
+                assertEquals("hello", f.call());
+                assertEquals("hello", f.call());
+                assertEquals("hello", f.call());
             }
             // Get a global function
             {
@@ -238,9 +234,8 @@ public class QuickJSContextTest {
 
                 Object v = context.getGlobal("e");
                 assertInstanceOf(QuickJSFunction.class, v);
-                try (QuickJSFunction f = (QuickJSFunction) v) {
-                    assertEquals("hello", f.call());
-                }
+                QuickJSFunction f = (QuickJSFunction) v;
+                assertEquals("hello", f.call());
             }
 
         }
@@ -332,22 +327,22 @@ public class QuickJSContextTest {
                 Map<String, Object> m = Map.of("a", f1, "b", f2, "c", f3);
 
                 context.setGlobal("b", m);
-
-                Object a = context.eval("b.a");
-                assertInstanceOf(QuickJSFunction.class, a);
-                try (QuickJSFunction f = (QuickJSFunction) a) {
+                {
+                    Object a = context.eval("b.a");
+                    assertInstanceOf(QuickJSFunction.class, a);
+                    QuickJSFunction f = (QuickJSFunction) a;
                     assertEquals("hellohellohello", f.call("hello"));
                 }
-
-                Object b = context.eval("b.b");
-                assertInstanceOf(QuickJSFunction.class, b);
-                try (QuickJSFunction f = (QuickJSFunction) b) {
+                {
+                    Object b = context.eval("b.b");
+                    assertInstanceOf(QuickJSFunction.class, b);
+                    QuickJSFunction f = (QuickJSFunction) b;
                     assertEquals("hello world", f.call());
                 }
-
-                Object c = context.eval("b.c");
-                assertInstanceOf(QuickJSFunction.class, c);
-                try (QuickJSFunction f = (QuickJSFunction) c) {
+                {
+                    Object c = context.eval("b.c");
+                    assertInstanceOf(QuickJSFunction.class, c);
+                    QuickJSFunction f = (QuickJSFunction) c;
                     assertEquals("hello world", f.call("hello", "world"));
                 }
             }
@@ -397,9 +392,8 @@ public class QuickJSContextTest {
                 Map<String, Object> m = (Map<String, Object>) v;
                 Object fc = m.get("a");
                 assertInstanceOf(QuickJSFunction.class, fc);
-                try (QuickJSFunction f = (QuickJSFunction) fc) {
-                    assertEquals("hello", f.call());
-                }
+                QuickJSFunction f = (QuickJSFunction) fc;
+                assertEquals("hello", f.call());
 
             }
         }
@@ -462,7 +456,7 @@ public class QuickJSContextTest {
             try {
 
                 // This never finishes without hitting memory limit
-                var obj = context.eval(
+                context.eval(
                         "const nrs = []; while (true) { nrs.push(5); f(nrs); }");
                 fail("This should never happen, because there is an endless loop before");
 

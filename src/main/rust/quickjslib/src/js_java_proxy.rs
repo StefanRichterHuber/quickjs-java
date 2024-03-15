@@ -20,7 +20,12 @@ impl<'js, 'vm> JSJavaProxy<'js> {
     }
 
     // Converts the stored JS value to an Java object
-    pub fn into_jobject(self, env: &mut JNIEnv<'vm>) -> Option<JObject<'vm>> {
+    pub fn into_jobject(
+        self,
+        context: &JObject<'vm>,
+
+        env: &mut JNIEnv<'vm>,
+    ) -> Option<JObject<'vm>> {
         if self.value.is_null() {
             debug!("Map JS null to Java null");
             return Some(JObject::null());
@@ -45,7 +50,7 @@ impl<'js, 'vm> JSJavaProxy<'js> {
 
             for value in array.iter::<JSJavaProxy>() {
                 let value = value.unwrap();
-                let value = value.into_jobject(env);
+                let value = value.into_jobject(context, env);
 
                 if let Some(v) = value {
                     unsafe {
@@ -75,8 +80,11 @@ impl<'js, 'vm> JSJavaProxy<'js> {
             let result = env
                 .new_object(
                     js_function_class,
-                    "(J)V",
-                    &[jni::objects::JValueGen::Long(ptr)],
+                    "(JL com.github.stefanrichterhuber.quickjs.QuickJSContext;)V",
+                    &[
+                        jni::objects::JValueGen::Long(ptr),
+                        jni::objects::JValueGen::Object(&context),
+                    ],
                 )
                 .unwrap();
             debug!("Map JS function to Java com.github.stefanrichterhuber.quickjs.QuickJSFunction with id {}", ptr
@@ -105,7 +113,7 @@ impl<'js, 'vm> JSJavaProxy<'js> {
                 let key: String = v.unwrap();
                 let k = env.new_string(&key).unwrap();
                 let value: JSJavaProxy = obj.get(key.as_str()).unwrap();
-                let value = value.into_jobject(env);
+                let value = value.into_jobject(context, env);
 
                 if let Some(v) = value {
                     unsafe {

@@ -76,7 +76,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
         let s: Result<JSJavaProxy, _> = globals.get(&key_string);
 
         match s {
-            Ok(s) => s.into_jobject(&mut _env).unwrap(),
+            Ok(s) => s.into_jobject(&_obj, &mut _env).unwrap(),
             Err(e) => {
                 handle_exception(e, &ctx, &mut _env);
                 JObject::null()
@@ -124,7 +124,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
         .get_string(&key)
         .expect("Couldn't get java string!")
         .into();
-    let value = ProxiedJavaValue::from_object(&mut _env, value);
+    let value = ProxiedJavaValue::from_object(&mut _env, &_obj, value);
 
     let _r = context.with(|ctx| {
         let globals = ctx.globals();
@@ -159,7 +159,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
         let s: Result<JSJavaProxy, _> = ctx.eval(script_string);
 
         match s {
-            Ok(s) => s.into_jobject(&mut _env).unwrap(),
+            Ok(s) => s.into_jobject(&_obj, &mut _env).unwrap(),
             Err(e) => {
                 handle_exception(e, &ctx, &mut _env);
                 JObject::null()
@@ -226,8 +226,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
                 if f.is_function() {
                     debug!("Invoking JS function with name {}()", function_name);
                     let func = f.as_function().unwrap();
-                    let result =
-                        foreign_function::invoke_js_function_with_java_parameters(_env, func, args);
+                    let result = foreign_function::invoke_js_function_with_java_parameters(
+                        _env, &_obj, func, args,
+                    );
                     result
                 } else {
                     _env.throw_new(

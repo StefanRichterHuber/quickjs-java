@@ -384,8 +384,7 @@ public class QuickJSContext implements AutoCloseable {
     void checkForDependentResources(Object result) {
         if (result instanceof QuickJSFunction) {
             var f = (QuickJSFunction) result;
-            this.cleanJob.dependedResources.add(f);
-            f.setCtx(this);
+            this.cleanJob.dependedResources.add(f::close);
         }
         if (result instanceof Collection) {
             for (Object o : (Collection<?>) result) {
