@@ -1,12 +1,9 @@
 package com.github.stefanrichterhuber.quickjs;
 
-import java.lang.ref.Cleaner;
-import java.lang.ref.Cleaner.Cleanable;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
@@ -27,38 +24,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class QuickJSContext implements AutoCloseable {
     private static final Logger LOGGER = LogManager.getLogger();
-
-    static final Cleaner CLEANER = Cleaner.create();
-    private final Cleanable cleanable;
-    private final CleanJob cleanJob;
-
-    private static class CleanJob implements Runnable {
-        private long ptr;
-        /**
-         * Keep a reference to all contexts created to prevent memory leaks which
-         * results in errors when closing the runtime
-         */
-        final Set<AutoCloseable> dependedResources = new HashSet<>();
-
-        public CleanJob(final long ptr) {
-            this.ptr = ptr;
-        }
-
-        @Override
-        public void run() {
-            if (ptr != 0) {
-                for (AutoCloseable f : dependedResources) {
-                    try {
-                        f.close();
-                    } catch (Exception e) {
-                        LOGGER.error("Failed to close runtime dependent resource", e);
-                    }
-                }
-                closeContext(ptr);
-                ptr = 0;
-            }
-        }
-    }
 
     /**
      * Invocation handler for java dynamic proxies which passes all method
@@ -97,6 +62,7 @@ public class QuickJSContext implements AutoCloseable {
 
     private final QuickJSRuntime runtime;
     private long ptr;
+    private final Set<AutoCloseable> dependedResources = new HashSet<>();
 
     private static native long createContext(long runtimePtr);
 
@@ -112,7 +78,17 @@ public class QuickJSContext implements AutoCloseable {
 
     @Override
     public void close() throws Exception {
-        this.cleanable.clean();
+        if (ptr != 0) {
+            for (AutoCloseable f : dependedResources) {
+                try {
+                    f.close();
+                } catch (Exception e) {
+                    LOGGER.error("Failed to close runtime dependent resource", e);
+                }
+            }
+            closeContext(ptr);
+            ptr = 0;
+        }
     }
 
     /**
@@ -123,8 +99,6 @@ public class QuickJSContext implements AutoCloseable {
     QuickJSContext(QuickJSRuntime runtime) {
         this.runtime = runtime;
         this.ptr = createContext(runtime.getRuntimePointer());
-        this.cleanJob = new CleanJob(ptr);
-        this.cleanable = CLEANER.register(this, this.cleanJob);
     }
 
     /**
@@ -146,7 +120,6 @@ public class QuickJSContext implements AutoCloseable {
      */
     public Object getGlobal(String name) {
         Object result = this.getGlobal(getContextPointer(), name);
-        this.checkForDependentResources(result);
         return result;
     }
 
@@ -326,7 +299,6 @@ public class QuickJSContext implements AutoCloseable {
         this.runtime.scriptStarted();
         try {
             final Object result = this.eval(getContextPointer(), script);
-            checkForDependentResources(result);
             return result;
         } finally {
             this.runtime.scriptFinished();
@@ -348,7 +320,6 @@ public class QuickJSContext implements AutoCloseable {
         this.runtime.scriptStarted();
         try {
             final Object result = this.invoke(getContextPointer(), name, args);
-            checkForDependentResources(result);
             return result;
         } finally {
             this.runtime.scriptFinished();
@@ -377,23 +348,8 @@ public class QuickJSContext implements AutoCloseable {
                 clazz);
     }
 
-    /**
-     * Checks for context dependent resources like QuickJSFunction and add them to
-     * the clean up list
-     */
-    void checkForDependentResources(Object result) {
-        if (result instanceof QuickJSFunction) {
-            var f = (QuickJSFunction) result;
-            this.cleanJob.dependedResources.add(f::close);
-        }
-        if (result instanceof Collection) {
-            for (Object o : (Collection<?>) result) {
-                checkForDependentResources(o);
-            }
-        }
-        if (result instanceof Map) {
-            checkForDependentResources(((Map<?, ?>) result).values());
-        }
+    void addDependentResource(AutoCloseable f) {
+        this.dependedResources.add(f);
     }
 
     /**

@@ -19,7 +19,11 @@ import io.questdb.jar.jni.JarJniLoader;
  * thread safe!
  */
 public class QuickJSRuntime implements AutoCloseable {
-    static final Cleaner CLEANER = Cleaner.create();
+    /**
+     * Use the cleaner to ensure Runtime and dependent resources (like Contexts and
+     * Functions) are properly closed
+     */
+    private static final Cleaner CLEANER = Cleaner.create();
     private final Cleanable cleanable;
     private final CleanJob cleanJob;
 

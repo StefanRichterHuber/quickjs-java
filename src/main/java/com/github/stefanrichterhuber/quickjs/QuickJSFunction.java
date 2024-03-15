@@ -37,7 +37,7 @@ public class QuickJSFunction {
         }
         this.ptr = ptr;
         this.ctx = context;
-        context.checkForDependentResources(this);
+        context.addDependentResource(this::close);
     }
 
     void close() throws RuntimeException {
@@ -60,7 +60,6 @@ public class QuickJSFunction {
         if (ptr != 0) {
             final Object result = this.callFunction(ptr, args);
             LOGGER.trace("Invoked QuickJSFunction with id {} -> {}", ptr, result);
-            ctx.checkForDependentResources(result);
             return result;
         } else {
             throw new IllegalStateException("QuickJSFunction already closed!");
