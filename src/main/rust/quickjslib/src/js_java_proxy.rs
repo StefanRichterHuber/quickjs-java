@@ -2,10 +2,6 @@ use jni::objects::JValue;
 use jni::{objects::JObject, signature::ReturnType, sys::jlong, JNIEnv};
 use log::debug;
 use log::error;
-use jni::objects::JValue;
-use jni::{objects::JObject, signature::ReturnType, sys::jlong, JNIEnv};
-use log::debug;
-use log::error;
 use rquickjs::{FromJs, Value};
 /// This proxy assist in converting JS values to Java values
 pub struct JSJavaProxy<'js> {
@@ -18,7 +14,6 @@ impl<'js> FromJs<'js> for JSJavaProxy<'js> {
     }
 }
 
-impl<'js, 'vm> JSJavaProxy<'js> {
 impl<'js, 'vm> JSJavaProxy<'js> {
     pub fn new(value: Value<'js>) -> Self {
         JSJavaProxy { value }
@@ -56,24 +51,11 @@ impl<'js, 'vm> JSJavaProxy<'js> {
                 .get_method_id("java/util/ArrayList", "add", "(Ljava/lang/Object;)Z")
                 .unwrap();
 
-            let add_id = env
-                .get_method_id("java/util/ArrayList", "add", "(Ljava/lang/Object;)Z")
-                .unwrap();
-
             for value in array.iter::<JSJavaProxy>() {
                 let value = value.unwrap();
                 let value = value.into_jobject(context, env);
 
                 if let Some(v) = value {
-                    unsafe {
-                        env.call_method_unchecked(
-                            &list,
-                            add_id,
-                            ReturnType::Primitive(jni::signature::Primitive::Boolean),
-                            &[JValue::Object(&v).as_jni()],
-                        )
-                        .unwrap()
-                    };
                     unsafe {
                         env.call_method_unchecked(
                             &list,
@@ -120,7 +102,6 @@ impl<'js, 'vm> JSJavaProxy<'js> {
             }
         } else if self.value.is_object() {
             debug!("Map JS object to Java java.util.HashMap",);
-            debug!("Map JS object to Java java.util.HashMap",);
             let obj = self.value.as_object().unwrap();
 
             let hash_map_class = env
@@ -128,15 +109,6 @@ impl<'js, 'vm> JSJavaProxy<'js> {
                 .expect("Failed to load the target class");
 
             let hash_map = env.new_object(hash_map_class, "()V", &[]).unwrap();
-
-            // Determines the method id of the Map.put(K, V) method for better performance
-            let put_id = env
-                .get_method_id(
-                    "java/util/HashMap",
-                    "put",
-                    "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;",
-                )
-                .unwrap();
 
             // Determines the method id of the Map.put(K, V) method for better performance
             let put_id = env
