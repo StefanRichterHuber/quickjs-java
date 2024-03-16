@@ -1,7 +1,9 @@
 use crate::foreign_function;
+use crate::foreign_function;
 use crate::java_js_proxy::ProxiedJavaValue;
 use crate::js_java_proxy::JSJavaProxy;
 use crate::runtime::{ptr_to_runtime, runtime_to_ptr};
+use jni::objects::JObjectArray;
 use jni::objects::JObjectArray;
 use jni::{
     objects::{JObject, JString},
@@ -9,6 +11,7 @@ use jni::{
     JNIEnv,
 };
 use log::debug;
+use rquickjs::{Context, Error, Value};
 use rquickjs::{Context, Error, Value};
 
 // ----------------------------------------------------------------------------------------
@@ -76,8 +79,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
         let s: Result<JSJavaProxy, _> = globals.get(&key_string);
 
         match s {
-            Ok(s) => s.into_jobject(&mut _env).unwrap(),
+            Ok(s) => s.into_jobject(&_obj, &mut _env).unwrap(),
             Err(e) => {
+                handle_exception(e, &ctx, &mut _env);
                 handle_exception(e, &ctx, &mut _env);
                 JObject::null()
             }
@@ -88,6 +92,24 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
     _ = context_to_ptr(context);
 
     result
+}
+
+/// Handle JS errors. Extracts the message and throws a Java exception..
+pub(crate) fn handle_exception(e: Error, ctx: &rquickjs::Ctx<'_>, _env: &mut JNIEnv<'_>) {
+    let msg = match e {
+        Error::Exception => {
+            let catch = ctx.catch();
+            if let Some(execp) = catch.as_exception() {
+                format!("{:?}", execp)
+            } else if let Some(msg) = catch.as_string() {
+                msg.to_string().unwrap()
+            } else {
+                format!("Unknown type of JS Error::Exception")
+            }
+        }
+        _ => e.to_string(),
+    };
+    _env.throw_new("java/lang/Exception", msg).unwrap();
 }
 
 /// Handle JS errors. Extracts the message and throws a Java exception..
@@ -124,7 +146,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
         .get_string(&key)
         .expect("Couldn't get java string!")
         .into();
-    let value = ProxiedJavaValue::from_object(&mut _env, value);
+    let value = ProxiedJavaValue::from_object(&mut _env, &_obj, value);
 
     let _r = context.with(|ctx| {
         let globals = ctx.globals();
@@ -132,6 +154,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
 
         match s {
             Ok(_) => {}
+            Err(e) => {
+                handle_exception(e, &ctx, &mut _env);
+            }
             Err(e) => {
                 handle_exception(e, &ctx, &mut _env);
             }
@@ -159,7 +184,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
         let s: Result<JSJavaProxy, _> = ctx.eval(script_string);
 
         match s {
-            Ok(s) => s.into_jobject(&mut _env).unwrap(),
+            Ok(s) => s.into_jobject(&_obj, &mut _env).unwrap(),
             Err(e) => {
                 handle_exception(e, &ctx, &mut _env);
                 JObject::null()
@@ -226,8 +251,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
                 if f.is_function() {
                     debug!("Invoking JS function with name {}()", function_name);
                     let func = f.as_function().unwrap();
-                    let result =
-                        foreign_function::invoke_js_function_with_java_parameters(_env, func, args);
+                    let result = foreign_function::invoke_js_function_with_java_parameters(
+                        _env, &_obj, func, args,
+                    );
                     result
                 } else {
                     _env.throw_new(
@@ -237,6 +263,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
                     .unwrap();
                     JObject::null()
                 }
+            }
+            Err(e) => {
+                handle_exception(e, &ctx, &mut _env);
             }
             Err(e) => {
                 handle_exception(e, &ctx, &mut _env);

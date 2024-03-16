@@ -7,6 +7,7 @@ use log::debug;
 use rquickjs::{function::Args, Function};
 
 use crate::{context, java_js_proxy, js_java_proxy::JSJavaProxy};
+use crate::{context, java_js_proxy, js_java_proxy::JSJavaProxy};
 
 /// Implementation com.github.stefanrichterhuber.quickjs.QuickJSFunction.closeFunction(long ptr)
 #[no_mangle]
@@ -33,6 +34,7 @@ pub(crate) fn function_to_ptr(fun: Box<Function>) -> jlong {
 }
 
 /// Implementation com.github.stefanrichterhuber.quickjs.QuickJSFunction.callFunction(long ptr)
+/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSFunction.callFunction(long ptr)
 #[no_mangle]
 pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSFunction_callFunction<
     'a,
@@ -41,10 +43,22 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSFunctio
     _obj: JObject<'a>,
     runtime_ptr: jlong,
     _values: JObjectArray<'a>,
+    _values: JObjectArray<'a>,
 ) -> JObject<'a> {
+    // Fetch context object from QuickJS Function
+    let context = _env
+        .get_field(
+            &_obj,
+            "ctx",
+            "Lcom/github/stefanrichterhuber/quickjs/QuickJSContext;",
+        )
+        .unwrap()
+        .l()
+        .unwrap();
+
     let func = ptr_to_function(runtime_ptr);
     debug!("Called QuickJSFunction with id {}", runtime_ptr);
-    let result = invoke_js_function_with_java_parameters(_env, &*func, _values);
+    let result = invoke_js_function_with_java_parameters(_env, &context, &*func, _values);
 
     // Prevents dropping the function
     _ = function_to_ptr(func);
@@ -54,18 +68,20 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSFunctio
 /// Invokes a JS function with Java parameters. All java parameters are converted to their JS representations, then the function is called.
 pub(crate) fn invoke_js_function_with_java_parameters<'a>(
     mut env: JNIEnv<'a>,
+    context: &JObject<'a>,
     func: &Function<'_>,
     parameters: JObjectArray<'a>,
 ) -> JObject<'a> {
     let ctx = func.ctx();
 
     let args_len = env.get_array_length(&parameters).unwrap();
+    let args_len = env.get_array_length(&parameters).unwrap();
 
     let s: Result<JSJavaProxy, _> = if args_len > 0 {
         let mut args = Vec::with_capacity(args_len as usize);
         for i in 0..args_len {
             let arg = env.get_object_array_element(&parameters, i).unwrap();
-            let arg_js = java_js_proxy::ProxiedJavaValue::from_object(&mut env, arg);
+            let arg_js = java_js_proxy::ProxiedJavaValue::from_object(&mut env, &context, arg);
             args.push(arg_js);
         }
 
@@ -80,8 +96,9 @@ pub(crate) fn invoke_js_function_with_java_parameters<'a>(
     };
 
     let result = match s {
-        Ok(s) => s.into_jobject(&mut env).unwrap(),
+        Ok(s) => s.into_jobject(&context, &mut env).unwrap(),
         Err(e) => {
+            context::handle_exception(e, ctx, &mut env);
             context::handle_exception(e, ctx, &mut env);
             JObject::null()
         }

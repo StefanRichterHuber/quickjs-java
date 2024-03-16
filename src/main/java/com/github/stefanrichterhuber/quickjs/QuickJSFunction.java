@@ -1,6 +1,5 @@
 package com.github.stefanrichterhuber.quickjs;
 
-import java.lang.ref.Cleaner.Cleanable;
 import java.util.Objects;
 
 import org.apache.logging.log4j.LogManager;
@@ -8,12 +7,18 @@ import org.apache.logging.log4j.Logger;
 
 /**
  * A QuickJSFunction represents a callable JavaScript function in a
- * QuickJSContext. To ensure memory safety the function must be cleaned up
- * (closed) after usage.
+ * QuickJSContext. Since the QuickJSFunction represents a native resource, it
+ * has to be closed if it is no longer needed. This is managed by the underlying
+ * QuickJSContext. This class is not meant to be instantiated from the Java
+ * runtime, but only from the native library, therefore its constructor is
+ * package-private.
  */
-public class QuickJSFunction implements AutoCloseable {
+public class QuickJSFunction implements VariadicFunction<Object> {
     private static final Logger LOGGER = LogManager.getLogger();
 
+    /**
+     * Native pointer to js function
+     */
     /**
      * Native pointer to js function
      */
@@ -22,40 +27,53 @@ public class QuickJSFunction implements AutoCloseable {
     /**
      * QuickJSContext this function is bound to. Might be null
      */
+    /**
+     * QuickJSContext this function is bound to. Might be null
+     */
     private QuickJSContext ctx;
 
+    /**
+     * Clean up native references to this function, must be called eventually to
+     * prevent memory leaks
+     * 
+     * @param ptr Native pointer to the js function
+     */
     private static native void closeFunction(long ptr);
 
+    /**
+     * Calls the JS function with the given arguments
+     * 
+     * @param ptr  Native pointer to the js function
+     * @param args Arguments to pass to the function
+     * @return Result of the function call
+     */
     private native Object callFunction(long ptr, Object... args);
 
-    private final Cleanable cleanJob;
-
     // TODO add name of the function from js?
-    public QuickJSFunction(long ptr) {
+    QuickJSFunction(long ptr, QuickJSContext context) {
+        if (ptr == 0) {
+            throw new IllegalArgumentException("Pointer must not be 0");
+        }
+        if (context == null) {
+            throw new IllegalArgumentException("Context must not be null");
+        }
         this.ptr = ptr;
-        this.cleanJob = QuickJSRuntime.CLEANER.register(this, new CleanJob(ptr));
+        this.ctx = context;
+        // This function is closed, when the underlying context is closed
+        context.addDependentResource(this::close);
     }
 
-    private static class CleanJob implements Runnable {
-        private long ptr;
-
-        public CleanJob(final long ptr) {
-            this.ptr = ptr;
+    /**
+     * Resource management is delegate to the QuickJSContext of the function.
+     * Therefore it is not necessary to give the user the ability to close the
+     * underlying resources
+     */
+    void close() throws RuntimeException {
+        if (this.ptr != 0) {
+            closeFunction(ptr);
+            LOGGER.debug("Closed QuickJSFunction with id {}", ptr);
+            ptr = 0;
         }
-
-        @Override
-        public void run() {
-            if (this.ptr != 0) {
-                closeFunction(ptr);
-                LOGGER.debug("Closed QuickJSFunction with id {}", ptr);
-                ptr = 0;
-            }
-        }
-    }
-
-    @Override
-    public void close() throws RuntimeException {
-        cleanJob.clean();
     }
 
     /**
@@ -66,25 +84,15 @@ public class QuickJSFunction implements AutoCloseable {
      *             expected by the JS runtime
      * @return Result of the function call
      */
-    public Object call(Object... args) {
+    @Override
+    public Object apply(Object... args) {
         if (ptr != 0) {
             final Object result = this.callFunction(ptr, args);
             LOGGER.trace("Invoked QuickJSFunction with id {} -> {}", ptr, result);
-            if (this.ctx != null) {
-                ctx.checkForDependentResources(result);
-            } else {
-                LOGGER.debug("QuickJSFunction with id {} not bound to QuickJSContext - might result in memory leaks",
-                        ptr);
-            }
-
             return result;
         } else {
             throw new IllegalStateException("QuickJSFunction already closed!");
         }
-    }
-
-    void setCtx(QuickJSContext ctx) {
-        this.ctx = ctx;
     }
 
     @Override

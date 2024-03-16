@@ -1,10 +1,9 @@
 package com.github.stefanrichterhuber.quickjs;
 
 import java.lang.ref.Cleaner;
+import java.lang.ref.Cleaner.Cleanable;
 import java.util.HashSet;
-import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
@@ -17,11 +16,50 @@ import io.questdb.jar.jni.JarJniLoader;
  * resources (both memory and time) allowed to be used for scripts. It is not
  * thread safe!
  */
+/**
+ * QuickJSRuntime is the root object for managing QuickJS. It manages the
+ * resources (both memory and time) allowed to be used for scripts. It is not
+ * thread safe!
+ */
 public class QuickJSRuntime implements AutoCloseable {
-    static final Cleaner CLEANER = Cleaner.create();
+    /**
+     * Use the cleaner to ensure Runtime and dependent resources (like Contexts and
+     * Functions) are properly closed
+     */
+    private static final Cleaner CLEANER = Cleaner.create();
+    private final Cleanable cleanable;
+    private final CleanJob cleanJob;
 
     private static final Logger LOGGER = LogManager.getLogger();
     private static final Logger NATIVE_LOGGER = LogManager.getLogger("[QuickJS native library]");
+
+    private static class CleanJob implements Runnable {
+        private long ptr;
+        /**
+         * Keep a reference to all contexts created to prevent memory leaks which
+         * results in errors when closing the runtime
+         */
+        final Set<AutoCloseable> dependedResources = new HashSet<>();
+
+        public CleanJob(final long ptr) {
+            this.ptr = ptr;
+        }
+
+        @Override
+        public void run() {
+            if (ptr != 0) {
+                for (AutoCloseable f : dependedResources) {
+                    try {
+                        f.close();
+                    } catch (Exception e) {
+                        LOGGER.error("Failed to close runtime dependent resource", e);
+                    }
+                }
+                closeRuntime(ptr);
+                ptr = 0;
+            }
+        }
+    }
 
     // Loads the native library and initializes logging
     static {
@@ -31,29 +69,43 @@ public class QuickJSRuntime implements AutoCloseable {
                 "/libs",
                 // The "lib" prefix and ".so|.dynlib|.dll" suffix are added automatically as
                 // needed.
-                "quickjslib");
+                "javaquickjs");
 
+        if (NATIVE_LOGGER.getLevel() == Level.ERROR || LOGGER.getLevel() == Level.FATAL) {
         if (NATIVE_LOGGER.getLevel() == Level.ERROR || LOGGER.getLevel() == Level.FATAL) {
             initLogging(1);
         } else if (NATIVE_LOGGER.getLevel() == Level.WARN) {
+        } else if (NATIVE_LOGGER.getLevel() == Level.WARN) {
             initLogging(2);
+        } else if (NATIVE_LOGGER.getLevel() == Level.INFO) {
         } else if (NATIVE_LOGGER.getLevel() == Level.INFO) {
             initLogging(3);
         } else if (NATIVE_LOGGER.getLevel() == Level.DEBUG) {
+        } else if (NATIVE_LOGGER.getLevel() == Level.DEBUG) {
             initLogging(4);
+        } else if (NATIVE_LOGGER.getLevel() == Level.TRACE) {
         } else if (NATIVE_LOGGER.getLevel() == Level.TRACE) {
             initLogging(5);
         } else if (NATIVE_LOGGER.getLevel() == Level.OFF) {
+        } else if (NATIVE_LOGGER.getLevel() == Level.OFF) {
             initLogging(0);
         } else {
+            LOGGER.warn("Unknown log level " + NATIVE_LOGGER.getLevel() + " , using INFO for native library");
             LOGGER.warn("Unknown log level " + NATIVE_LOGGER.getLevel() + " , using INFO for native library");
             initLogging(3);
         }
     }
 
-    // Pointer to native runtime
+    /**
+     * Pointer to native runtime
+     */
     private long ptr;
 
+    /**
+     * Creates a new native runtime
+     * 
+     * @return Pointer to the native runtime
+     */
     /**
      * Creates a new native runtime
      * 
@@ -66,8 +118,19 @@ public class QuickJSRuntime implements AutoCloseable {
      * 
      * @param ptr Pointer to the native runtime
      */
+    /**
+     * Closes the native runtime
+     * 
+     * @param ptr Pointer to the native runtime
+     */
     private static native void closeRuntime(long ptr);
 
+    /**
+     * Initializes the logging for the native library. Only allowed to be called
+     * once!
+     * 
+     * @param level Log level from 0 (off) to 5 (trace)
+     */
     /**
      * Initializes the logging for the native library. Only allowed to be called
      * once!
@@ -105,14 +168,10 @@ public class QuickJSRuntime implements AutoCloseable {
     private long scriptStartTime = -1;
 
     /**
-     * Keep a reference to all contexts created to prevent memory leaks which
-     * results in errors when closing the runtime
-     */
-    private final Set<AutoCloseable> dependedResources = new HashSet<>();
-
-    /**
      * This method is called by the native code to log a message.
      * 
+     * @param level   Log level
+     * @param message Message to log
      * @param level   Log level
      * @param message Message to log
      */
@@ -144,10 +203,20 @@ public class QuickJSRuntime implements AutoCloseable {
     /**
      * Creates a new QuickJSRuntime
      */
+    /**
+     * Creates a new QuickJSRuntime
+     */
     public QuickJSRuntime() {
         ptr = createRuntime();
+        this.cleanJob = new CleanJob(ptr);
+        this.cleanable = CLEANER.register(this, this.cleanJob);
     }
 
+    /**
+     * Returns the native pointer to the QuickJSRuntime
+     * 
+     * @return
+     */
     long getRuntimePointer() {
         if (ptr == 0) {
             throw new IllegalStateException("QuickJSRuntime closed");
@@ -163,24 +232,31 @@ public class QuickJSRuntime implements AutoCloseable {
      */
     boolean jsInterrupt() {
         if (this.scriptStartTime > 0 && scriptRuntimeLimit > 0) {
-            return !(System.currentTimeMillis() - scriptStartTime < scriptRuntimeLimit);
+            final boolean result = !(System.currentTimeMillis() - scriptStartTime < scriptRuntimeLimit);
+            if (result) {
+                LOGGER.debug("Script runtime limit of {} ms reached, interrupting script", scriptRuntimeLimit);
+            }
+            return result;
         }
         return false;
+
     }
 
     /**
      * Callback called by QuickJSContext when a script is started
      */
     void scriptStarted() {
-        if (this.scriptRuntimeLimit > 0) {
-            scriptStartTime = System.currentTimeMillis();
-        }
+        scriptStartTime = System.currentTimeMillis();
+        LOGGER.debug("Script started at time {}", scriptStartTime);
     }
 
     /**
      * Callback called by QuickJSContext when a script is started
      */
     void scriptFinished() {
+
+        LOGGER.debug("Script finished at time {}. Total runtime {} ms", () -> System.currentTimeMillis(),
+                () -> System.currentTimeMillis() - scriptStartTime);
         this.scriptStartTime = -1;
     }
 
@@ -221,13 +297,7 @@ public class QuickJSRuntime implements AutoCloseable {
 
     @Override
     public void close() throws Exception {
-        if (ptr != 0) {
-            for (AutoCloseable f : dependedResources) {
-                f.close();
-            }
-            closeRuntime(ptr);
-            ptr = 0;
-        }
+        cleanable.clean();
     }
 
     /**
@@ -238,10 +308,13 @@ public class QuickJSRuntime implements AutoCloseable {
      */
     public QuickJSContext createContext() {
         QuickJSContext result = new QuickJSContext(this);
-        this.dependedResources.add(result);
+        this.cleanJob.dependedResources.add(result);
         return result;
     }
 
+    /**
+     * QuickJS runtimes are equal by their native pointer
+     */
     @Override
     public boolean equals(Object obj) {
         return obj instanceof QuickJSRuntime && ((QuickJSRuntime) obj).ptr == this.ptr;

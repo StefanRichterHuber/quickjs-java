@@ -1,5 +1,5 @@
 [package]
-name = "quickjslib"
+name = "java-quickjs"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,7 +11,7 @@ edition = "2021"
 lto = true
 
 [lib]
-name = "quickjslib"
+name = "javaquickjs"
 crate-type = ["cdylib"]
 
 [dependencies]

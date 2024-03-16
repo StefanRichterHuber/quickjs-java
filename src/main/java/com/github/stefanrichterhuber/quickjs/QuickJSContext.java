@@ -4,15 +4,18 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * QuickJSContext is a independent namespace with its own set of globals. With
@@ -20,6 +23,8 @@ import java.util.function.Supplier;
  * variables and finally evaluate JS code. It is not thread safe!
  */
 public class QuickJSContext implements AutoCloseable {
+    private static final Logger LOGGER = LogManager.getLogger();
+
     /**
      * Invocation handler for java dynamic proxies which passes all method
      * invocations to the underlying scripting context
@@ -57,10 +62,11 @@ public class QuickJSContext implements AutoCloseable {
 
     private final QuickJSRuntime runtime;
     private long ptr;
+    private final Set<AutoCloseable> dependedResources = new HashSet<>();
 
-    private native long createContext(long runtimePtr);
+    private static native long createContext(long runtimePtr);
 
-    private native void closeContext(long ptr);
+    private static native void closeContext(long ptr);
 
     private native void setGlobal(long ptr, String name, Object value);
 
@@ -70,17 +76,15 @@ public class QuickJSContext implements AutoCloseable {
 
     private native Object invoke(long ptr, String name, Object... args);
 
-    /**
-     * Keep a reference to all functions received to prevent memory leaks which
-     * results in errors when closing the context
-     */
-    private final Set<AutoCloseable> dependedResources = new HashSet<>();
-
     @Override
     public void close() throws Exception {
         if (ptr != 0) {
             for (AutoCloseable f : dependedResources) {
-                f.close();
+                try {
+                    f.close();
+                } catch (Exception e) {
+                    LOGGER.error("Failed to close runtime dependent resource", e);
+                }
             }
             closeContext(ptr);
             ptr = 0;
@@ -92,7 +96,14 @@ public class QuickJSContext implements AutoCloseable {
      * 
      * @param runtime
      */
+    /**
+     * Creates a new QuickJSContext instance from a QuickJSRuntime
+     * 
+     * @param runtime
+     */
     QuickJSContext(QuickJSRuntime runtime) {
+        this.runtime = runtime;
+        this.ptr = createContext(runtime.getRuntimePointer());
         this.runtime = runtime;
         this.ptr = createContext(runtime.getRuntimePointer());
     }
@@ -116,7 +127,6 @@ public class QuickJSContext implements AutoCloseable {
      */
     public Object getGlobal(String name) {
         Object result = this.getGlobal(getContextPointer(), name);
-        this.checkForDependentResources(result);
         return result;
     }
 
@@ -215,6 +225,17 @@ public class QuickJSContext implements AutoCloseable {
     }
 
     /**
+     * Adds a global variable to the context. Array values are copied value by
+     * value to an JS array.
+     * 
+     * @param name  Name of the variable
+     * @param value Value of the variable
+     */
+    public <T> void setGlobal(String name, T[] value) {
+        this.setGlobal(getContextPointer(), name, value);
+    }
+
+    /**
      * Adds a global variable to the context.
      * 
      * @param name  Name of the variable
@@ -232,6 +253,16 @@ public class QuickJSContext implements AutoCloseable {
      * @param value Value of the function
      */
     public void setGlobal(String name, Function<?, ?> f) {
+        this.setGlobal(getContextPointer(), name, f);
+    }
+
+    /**
+     * Adds a global function to the context.
+     * 
+     * @param name  Name of the function
+     * @param value Value of the function
+     */
+    public void setGlobal(String name, VariadicFunction<?> f) {
         this.setGlobal(getContextPointer(), name, f);
     }
 
@@ -276,16 +307,26 @@ public class QuickJSContext implements AutoCloseable {
     }
 
     /**
+     * Adds a global function to the context.
+     * 
+     * @param name  Name of the function
+     * @param value Value of the function
+     */
+    public void setGlobal(String name, BiConsumer<?, ?> f) {
+        this.setGlobal(getContextPointer(), name, f);
+    }
+
+    /**
      * Evaluates a JavaScript script and returns the result.
      * 
      * @param script Script to execute
-     * @return Result from the script
+     * @return Result from the script. Will be either null, or of one of the
+     *         supported java types
      */
     public Object eval(String script) {
         this.runtime.scriptStarted();
         try {
             final Object result = this.eval(getContextPointer(), script);
-            checkForDependentResources(result);
             return result;
         } finally {
             this.runtime.scriptFinished();
@@ -299,13 +340,14 @@ public class QuickJSContext implements AutoCloseable {
      * 
      * @param name Name of the function to invoke
      * @param args Arguments to pass to the function
-     * @return Result of the call
+     * @return n Result from the function call. Will be either null, or of one of
+     *         the
+     *         supported java types
      */
     public Object invoke(String name, Object... args) {
         this.runtime.scriptStarted();
         try {
             final Object result = this.invoke(getContextPointer(), name, args);
-            checkForDependentResources(result);
             return result;
         } finally {
             this.runtime.scriptFinished();
@@ -314,39 +356,33 @@ public class QuickJSContext implements AutoCloseable {
 
     /**
      * Creates a script-backed dynamic proxy for the given interface class. All
-     * , but default methods (!), from the interface are passed as invoke to the
-     * script
-     * context.
+     * , but default methods (!), from the interface are passed as
+     * {@link #invoke(String, Object...)} to the
+     * script context. This gives the ability to have type-safe interfaces to the
+     * scripting environment.
      * 
      * @param <T>       Type of the interface to proxy
      * @param namespace Optional name space (all method calls are prefixed with it.
      *                  namespace = 'obj', method name = 'f' -> obj.f() is called);
+     *                  Nested namespaces supported (eg. obj.o.f())
      *                  can be null
      * @param clazz     Class of the interface to be proxied
      * @return Proxied instance of the interface
      */
     public <T> T getInterface(String namespace, Class<T> clazz) {
-        return Proxy.create(this, namespace, clazz);
+        return Proxy.create(this,
+                namespace != null && namespace.endsWith(".") ? namespace.substring(0, namespace.length() - 1)
+                        : namespace,
+                clazz);
     }
 
-    // Checks for context dependent resources like QuickJSFunction and add them to
-    // the clean up list
-    void checkForDependentResources(Object result) {
-        if (result instanceof QuickJSFunction) {
-            var f = (QuickJSFunction) result;
-            dependedResources.add(f);
-            f.setCtx(this);
-        }
-        if (result instanceof Collection) {
-            for (Object o : (Collection<?>) result) {
-                checkForDependentResources(o);
-            }
-        }
-        if (result instanceof Map) {
-            checkForDependentResources(((Map<?, ?>) result).values());
-        }
+    void addDependentResource(AutoCloseable f) {
+        this.dependedResources.add(f);
     }
 
+    /**
+     * QuickJS contexts are equal by their native pointer
+     */
     @Override
     public boolean equals(Object obj) {
         return obj instanceof QuickJSContext && ((QuickJSContext) obj).ptr == this.ptr;

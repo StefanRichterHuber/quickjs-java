@@ -2,6 +2,10 @@ use jni::objects::JValue;
 use jni::{objects::JObject, signature::ReturnType, sys::jlong, JNIEnv};
 use log::debug;
 use log::error;
+use jni::objects::JValue;
+use jni::{objects::JObject, signature::ReturnType, sys::jlong, JNIEnv};
+use log::debug;
+use log::error;
 use rquickjs::{FromJs, Value};
 /// This proxy assist in converting JS values to Java values
 pub struct JSJavaProxy<'js> {
@@ -15,19 +19,28 @@ impl<'js> FromJs<'js> for JSJavaProxy<'js> {
 }
 
 impl<'js, 'vm> JSJavaProxy<'js> {
+impl<'js, 'vm> JSJavaProxy<'js> {
     pub fn new(value: Value<'js>) -> Self {
         JSJavaProxy { value }
     }
 
     // Converts the stored JS value to an Java object
-    pub fn into_jobject(self, env: &mut JNIEnv<'vm>) -> Option<JObject<'vm>> {
+    pub fn into_jobject(
+        self,
+        context: &JObject<'vm>,
+
+        env: &mut JNIEnv<'vm>,
+    ) -> Option<JObject<'vm>> {
         if self.value.is_null() {
+            debug!("Map JS null to Java null");
             debug!("Map JS null to Java null");
             return Some(JObject::null());
         } else if self.value.is_undefined() {
             debug!("Map JS undefined to Java null");
+            debug!("Map JS undefined to Java null");
             return Some(JObject::null());
         } else if self.value.is_array() {
+            debug!("Map JS array to Java java.util.ArrayList",);
             debug!("Map JS array to Java java.util.ArrayList",);
             let array = self.value.as_array().unwrap();
             let len = array.len() as i32;
@@ -43,11 +56,24 @@ impl<'js, 'vm> JSJavaProxy<'js> {
                 .get_method_id("java/util/ArrayList", "add", "(Ljava/lang/Object;)Z")
                 .unwrap();
 
+            let add_id = env
+                .get_method_id("java/util/ArrayList", "add", "(Ljava/lang/Object;)Z")
+                .unwrap();
+
             for value in array.iter::<JSJavaProxy>() {
                 let value = value.unwrap();
-                let value = value.into_jobject(env);
+                let value = value.into_jobject(context, env);
 
                 if let Some(v) = value {
+                    unsafe {
+                        env.call_method_unchecked(
+                            &list,
+                            add_id,
+                            ReturnType::Primitive(jni::signature::Primitive::Boolean),
+                            &[JValue::Object(&v).as_jni()],
+                        )
+                        .unwrap()
+                    };
                     unsafe {
                         env.call_method_unchecked(
                             &list,
@@ -72,17 +98,28 @@ impl<'js, 'vm> JSJavaProxy<'js> {
                 .find_class("com/github/stefanrichterhuber/quickjs/QuickJSFunction")
                 .expect("Failed to load the target class");
 
-            let result = env
-                .new_object(
-                    js_function_class,
-                    "(J)V",
-                    &[jni::objects::JValueGen::Long(ptr)],
-                )
-                .unwrap();
-            debug!("Map JS function to Java com.github.stefanrichterhuber.quickjs.QuickJSFunction with id {}", ptr
+            let result = env.new_object(
+                js_function_class,
+                "(JLcom/github/stefanrichterhuber/quickjs/QuickJSContext;)V",
+                &[
+                    jni::objects::JValueGen::Long(ptr),
+                    jni::objects::JValueGen::Object(context),
+                ],
             );
-            return Some(result);
+
+            match result {
+                Ok(result) => {
+                    debug!("Map JS function to Java com.github.stefanrichterhuber.quickjs.QuickJSFunction with id {}", ptr
+                    );
+                    return Some(result);
+                }
+                Err(e) => {
+                    error!("Failed to create a new object: {}", e);
+                    return None;
+                }
+            }
         } else if self.value.is_object() {
+            debug!("Map JS object to Java java.util.HashMap",);
             debug!("Map JS object to Java java.util.HashMap",);
             let obj = self.value.as_object().unwrap();
 
@@ -101,13 +138,31 @@ impl<'js, 'vm> JSJavaProxy<'js> {
                 )
                 .unwrap();
 
+            // Determines the method id of the Map.put(K, V) method for better performance
+            let put_id = env
+                .get_method_id(
+                    "java/util/HashMap",
+                    "put",
+                    "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;",
+                )
+                .unwrap();
+
             for v in obj.keys() {
                 let key: String = v.unwrap();
                 let k = env.new_string(&key).unwrap();
                 let value: JSJavaProxy = obj.get(key.as_str()).unwrap();
-                let value = value.into_jobject(env);
+                let value = value.into_jobject(context, env);
 
                 if let Some(v) = value {
+                    unsafe {
+                        env.call_method_unchecked(
+                            &hash_map,
+                            put_id,
+                            ReturnType::Object,
+                            &[JValue::Object(&k).as_jni(), JValue::Object(&v).as_jni()],
+                        )
+                        .unwrap()
+                    };
                     unsafe {
                         env.call_method_unchecked(
                             &hash_map,
@@ -121,6 +176,7 @@ impl<'js, 'vm> JSJavaProxy<'js> {
             }
             return Some(hash_map);
         } else if self.value.is_float() {
+            debug!("Map JS float to Java java.lang.Double",);
             debug!("Map JS float to Java java.lang.Double",);
 
             let value = self.value.as_float().unwrap();
@@ -139,6 +195,7 @@ impl<'js, 'vm> JSJavaProxy<'js> {
             return Some(object);
         } else if self.value.is_int() {
             debug!("Map JS int to Java java.lang.Integer",);
+            debug!("Map JS int to Java java.lang.Integer",);
 
             let value = self.value.as_int().unwrap();
             let class = env
@@ -156,11 +213,13 @@ impl<'js, 'vm> JSJavaProxy<'js> {
             return Some(object);
         } else if self.value.is_string() {
             debug!("Map JS string to Java java.lang.String",);
+            debug!("Map JS string to Java java.lang.String",);
             let value: String = self.value.as_string().unwrap().get().unwrap();
             let object = env.new_string(value).unwrap().into();
 
             return Some(object);
         } else if self.value.is_bool() {
+            debug!("Map JS bool to Java java.lang.Boolean",);
             debug!("Map JS bool to Java java.lang.Boolean",);
             let value = self.value.as_bool().unwrap();
             let class = env
