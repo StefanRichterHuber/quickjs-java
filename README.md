@@ -46,9 +46,24 @@ try (QuickJSRuntime runtime = new QuickJSRuntime(); // A QuickJSRuntime manages 
     // Set global variable. For supported types, see table below.
     context.setGlobal("a", "hello");
     // Get global variable. Always returns (boxed) Object or null. Type-check and cast on the java side. See table of supported types below.
+    // Get global variable. Always returns (boxed) Object or null. Type-check and cast on the java side. See table of supported types below.
     Object a = context.getGlobal("a");
     // Eval script. Always returns a (boxed) Object or null. Type-check and cast on the java side. See table of supported types below.
+    // Eval script. Always returns a (boxed) Object or null. Type-check and cast on the java side. See table of supported types below.
     Object v = context.eval("3 + 4");
+    assertEquals(7, (Integer)v);
+
+    // Set both a function from java as well as create a native JS function
+    context.setGlobal("f1", (String a) -> "Hello " + a);
+    context.eval("function f2(a) { return 'Hello from JS dear ' + a; };");
+
+    // Both functions can be called by using invoke
+    String r1 = (String) context.invoke("f1", "World");
+    assertEquals("Hello World", r1);
+
+    String r2 = (String) context.invoke("f2", "World");
+    assertEquals("Hello from JS dear World", r2);
+}
     assertEquals(7, (Integer)v);
 
     // Set both a function from java as well as create a native JS function
@@ -68,6 +83,8 @@ For further examples look at `com.github.stefanrichterhuber.quickjs.QuickJSConte
 
 ### Supported types
 
+The rust library seamlessly translates all supported Java types to JS types and back. Translation is always a copy operation so changes to an `object` created from a `Map` won't be written back to map, for example. A Java function imported into the JS context will be exported as `com.github.stefanrichterhuber.quickjs.QuickJSFunction`.
+All supported Java types can be used as globals, retrieved as globals or used as function parameters or return values and map values.
 The rust library seamlessly translates all supported Java types to JS types and back. Translation is always a copy operation so changes to an `object` created from a `Map` won't be written back to map, for example. A Java function imported into the JS context will be exported as `com.github.stefanrichterhuber.quickjs.QuickJSFunction`.
 All supported Java types can be used as globals, retrieved as globals or used as function parameters or return values and map values.
 

@@ -7,6 +7,7 @@ use log::debug;
 use rquickjs::{function::Args, Function};
 
 use crate::{context, java_js_proxy, js_java_proxy::JSJavaProxy};
+use crate::{context, java_js_proxy, js_java_proxy::JSJavaProxy};
 
 /// Implementation com.github.stefanrichterhuber.quickjs.QuickJSFunction.closeFunction(long ptr)
 #[no_mangle]
@@ -33,6 +34,7 @@ pub(crate) fn function_to_ptr(fun: Box<Function>) -> jlong {
 }
 
 /// Implementation com.github.stefanrichterhuber.quickjs.QuickJSFunction.callFunction(long ptr)
+/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSFunction.callFunction(long ptr)
 #[no_mangle]
 pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSFunction_callFunction<
     'a,
@@ -40,6 +42,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSFunctio
     mut _env: JNIEnv<'a>,
     _obj: JObject<'a>,
     runtime_ptr: jlong,
+    _values: JObjectArray<'a>,
     _values: JObjectArray<'a>,
 ) -> JObject<'a> {
     // Fetch context object from QuickJS Function
@@ -72,6 +75,7 @@ pub(crate) fn invoke_js_function_with_java_parameters<'a>(
     let ctx = func.ctx();
 
     let args_len = env.get_array_length(&parameters).unwrap();
+    let args_len = env.get_array_length(&parameters).unwrap();
 
     let s: Result<JSJavaProxy, _> = if args_len > 0 {
         let mut args = Vec::with_capacity(args_len as usize);
@@ -94,6 +98,7 @@ pub(crate) fn invoke_js_function_with_java_parameters<'a>(
     let result = match s {
         Ok(s) => s.into_jobject(&context, &mut env).unwrap(),
         Err(e) => {
+            context::handle_exception(e, ctx, &mut env);
             context::handle_exception(e, ctx, &mut env);
             JObject::null()
         }

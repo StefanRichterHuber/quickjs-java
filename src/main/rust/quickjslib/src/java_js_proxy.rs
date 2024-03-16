@@ -312,6 +312,12 @@ impl ProxiedJavaValue {
             } else {
                 ProxiedJavaValue::from_null()
             };
+            let result = if env.exception_check().unwrap() {
+                let exception = env.exception_occurred().unwrap();
+                ProxiedJavaValue::from_throwable(&mut env, exception)
+            } else {
+                ProxiedJavaValue::from_null()
+            };
 
             result
         };
@@ -334,6 +340,8 @@ impl ProxiedJavaValue {
             debug!("Calling java function java.util.function.Supplier");
             let mut env = vm.get_env().unwrap();
 
+            let call_result: errors::Result<JValueGen<JObject<'_>>> =
+                env.call_method(target.as_ref(), "get", "()Ljava/lang/Object;", &[]);
             let call_result: errors::Result<JValueGen<JObject<'_>>> =
                 env.call_method(target.as_ref(), "get", "()Ljava/lang/Object;", &[]);
 

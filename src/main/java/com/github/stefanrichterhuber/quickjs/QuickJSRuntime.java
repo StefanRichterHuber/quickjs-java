@@ -3,9 +3,7 @@ package com.github.stefanrichterhuber.quickjs;
 import java.lang.ref.Cleaner;
 import java.lang.ref.Cleaner.Cleanable;
 import java.util.HashSet;
-import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
@@ -13,6 +11,11 @@ import org.apache.logging.log4j.Logger;
 
 import io.questdb.jar.jni.JarJniLoader;
 
+/**
+ * QuickJSRuntime is the root object for managing QuickJS. It manages the
+ * resources (both memory and time) allowed to be used for scripts. It is not
+ * thread safe!
+ */
 /**
  * QuickJSRuntime is the root object for managing QuickJS. It manages the
  * resources (both memory and time) allowed to be used for scripts. It is not
@@ -69,18 +72,25 @@ public class QuickJSRuntime implements AutoCloseable {
                 "javaquickjs");
 
         if (NATIVE_LOGGER.getLevel() == Level.ERROR || LOGGER.getLevel() == Level.FATAL) {
+        if (NATIVE_LOGGER.getLevel() == Level.ERROR || LOGGER.getLevel() == Level.FATAL) {
             initLogging(1);
+        } else if (NATIVE_LOGGER.getLevel() == Level.WARN) {
         } else if (NATIVE_LOGGER.getLevel() == Level.WARN) {
             initLogging(2);
         } else if (NATIVE_LOGGER.getLevel() == Level.INFO) {
+        } else if (NATIVE_LOGGER.getLevel() == Level.INFO) {
             initLogging(3);
+        } else if (NATIVE_LOGGER.getLevel() == Level.DEBUG) {
         } else if (NATIVE_LOGGER.getLevel() == Level.DEBUG) {
             initLogging(4);
         } else if (NATIVE_LOGGER.getLevel() == Level.TRACE) {
+        } else if (NATIVE_LOGGER.getLevel() == Level.TRACE) {
             initLogging(5);
+        } else if (NATIVE_LOGGER.getLevel() == Level.OFF) {
         } else if (NATIVE_LOGGER.getLevel() == Level.OFF) {
             initLogging(0);
         } else {
+            LOGGER.warn("Unknown log level " + NATIVE_LOGGER.getLevel() + " , using INFO for native library");
             LOGGER.warn("Unknown log level " + NATIVE_LOGGER.getLevel() + " , using INFO for native library");
             initLogging(3);
         }
@@ -96,6 +106,11 @@ public class QuickJSRuntime implements AutoCloseable {
      * 
      * @return Pointer to the native runtime
      */
+    /**
+     * Creates a new native runtime
+     * 
+     * @return Pointer to the native runtime
+     */
     private native long createRuntime();
 
     /**
@@ -103,8 +118,19 @@ public class QuickJSRuntime implements AutoCloseable {
      * 
      * @param ptr Pointer to the native runtime
      */
+    /**
+     * Closes the native runtime
+     * 
+     * @param ptr Pointer to the native runtime
+     */
     private static native void closeRuntime(long ptr);
 
+    /**
+     * Initializes the logging for the native library. Only allowed to be called
+     * once!
+     * 
+     * @param level Log level from 0 (off) to 5 (trace)
+     */
     /**
      * Initializes the logging for the native library. Only allowed to be called
      * once!
@@ -146,6 +172,8 @@ public class QuickJSRuntime implements AutoCloseable {
      * 
      * @param level   Log level
      * @param message Message to log
+     * @param level   Log level
+     * @param message Message to log
      */
     static void runtimeLog(int level, String message) {
         switch (level) {
@@ -172,6 +200,9 @@ public class QuickJSRuntime implements AutoCloseable {
         }
     }
 
+    /**
+     * Creates a new QuickJSRuntime
+     */
     /**
      * Creates a new QuickJSRuntime
      */

@@ -19,8 +19,14 @@ public class QuickJSFunction implements VariadicFunction<Object> {
     /**
      * Native pointer to js function
      */
+    /**
+     * Native pointer to js function
+     */
     long ptr;
 
+    /**
+     * QuickJSContext this function is bound to. Might be null
+     */
     /**
      * QuickJSContext this function is bound to. Might be null
      */

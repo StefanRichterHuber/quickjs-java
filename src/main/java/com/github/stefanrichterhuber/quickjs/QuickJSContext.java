@@ -96,7 +96,14 @@ public class QuickJSContext implements AutoCloseable {
      * 
      * @param runtime
      */
+    /**
+     * Creates a new QuickJSContext instance from a QuickJSRuntime
+     * 
+     * @param runtime
+     */
     QuickJSContext(QuickJSRuntime runtime) {
+        this.runtime = runtime;
+        this.ptr = createContext(runtime.getRuntimePointer());
         this.runtime = runtime;
         this.ptr = createContext(runtime.getRuntimePointer());
     }
@@ -203,6 +210,17 @@ public class QuickJSContext implements AutoCloseable {
      * @param value Value of the variable
      */
     public void setGlobal(String name, Iterable<?> value) {
+        this.setGlobal(getContextPointer(), name, value);
+    }
+
+    /**
+     * Adds a global variable to the context. Array values are copied value by
+     * value to an JS array.
+     * 
+     * @param name  Name of the variable
+     * @param value Value of the variable
+     */
+    public <T> void setGlobal(String name, T[] value) {
         this.setGlobal(getContextPointer(), name, value);
     }
 
