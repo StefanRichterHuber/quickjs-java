@@ -46,10 +46,7 @@ try (QuickJSRuntime runtime = new QuickJSRuntime(); // A QuickJSRuntime manages 
     // Set global variable. For supported types, see table below.
     context.setGlobal("a", "hello");
     // Get global variable. Always returns (boxed) Object or null. Type-check and cast on the java side. See table of supported types below.
-    // Get global variable. Always returns (boxed) Object or null. Type-check and cast on the java side. See table of supported types below.
     Object a = context.getGlobal("a");
-    // Eval script. Always returns a (boxed) Object or null. Type-check and cast on the java side. See table of supported types below.
-    // Eval script. Always returns a (boxed) Object or null. Type-check and cast on the java side. See table of supported types below.
     Object v = context.eval("3 + 4");
     assertEquals(7, (Integer)v);
 
@@ -83,8 +80,6 @@ For further examples look at `com.github.stefanrichterhuber.quickjs.QuickJSConte
 
 ### Supported types
 
-The rust library seamlessly translates all supported Java types to JS types and back. Translation is always a copy operation so changes to an `object` created from a `Map` won't be written back to map, for example. A Java function imported into the JS context will be exported as `com.github.stefanrichterhuber.quickjs.QuickJSFunction`.
-All supported Java types can be used as globals, retrieved as globals or used as function parameters or return values and map values.
 The rust library seamlessly translates all supported Java types to JS types and back. Translation is always a copy operation so changes to an `object` created from a `Map` won't be written back to map, for example. A Java function imported into the JS context will be exported as `com.github.stefanrichterhuber.quickjs.QuickJSFunction`.
 All supported Java types can be used as globals, retrieved as globals or used as function parameters or return values and map values.
 
