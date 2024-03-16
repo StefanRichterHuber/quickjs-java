@@ -50,6 +50,8 @@ public class QuickJSUtils {
             return true;
         if (QuickJSFunction.class.isAssignableFrom(clazz))
             return true;
+        if (VariadicFunction.class.isAssignableFrom(clazz))
+            return true;
 
         return false;
     }
@@ -70,11 +72,8 @@ public class QuickJSUtils {
      * Utility method to create a Map of any object. All public methods, matching
      * the criteria of supported java types, of the
      * object will be mapped to functions.
-     * <li>Especially all methods must be mappable to Consumer, Supplier, Function
-     * or
-     * BiFunction</li>
-     * <li>All method parameters and the return type need to be supported as
-     * well</li>
+     * All method parameters and the return type need to be one of the supported
+     * types
      */
     @SuppressWarnings("unchecked")
     public static Map<String, Object> createMapOf(Object obj) {
@@ -90,47 +89,25 @@ public class QuickJSUtils {
         Class c = obj.getClass();
         // Add a function for each method
         for (Method m : c.getMethods()) {
-            // Check if this is suitable candiate
+            // Check if this is suitable candidate
+            // Return type must be compatible with the supported java types
             if (!isSupported(m.getReturnType())) {
                 continue;
             }
+            // All parameter types must be compatible with the supported java types
             for (var arg : m.getParameterTypes()) {
                 if (!isSupported(arg)) {
                     continue;
                 }
             }
-            if (m.getParameterCount() == 0) {
-                final Supplier<Object> f = () -> {
-                    try {
-                        return m.invoke(obj);
-                    } catch (IllegalAccessException | InvocationTargetException e) {
-                        throw new RuntimeException(e);
-                    }
-                };
-                result.put(m.getName(), f);
-            }
-
-            if (m.getParameterCount() == 1) {
-                final Function<Object, Object> f = a -> {
-                    try {
-                        return m.invoke(obj, a);
-                    } catch (IllegalAccessException | InvocationTargetException e) {
-                        throw new RuntimeException(e);
-                    }
-                };
-                result.put(m.getName(), f);
-            }
-
-            if (m.getParameterCount() == 2) {
-                final BiFunction<Object, Object, Object> f = (a, b) -> {
-                    try {
-                        return m.invoke(obj, a, b);
-                    } catch (IllegalAccessException | InvocationTargetException e) {
-                        throw new RuntimeException(e);
-                    }
-                };
-                result.put(m.getName(), f);
-            }
+            final VariadicFunction<Object> f = (args) -> {
+                try {
+                    return m.invoke(obj, args);
+                } catch (IllegalAccessException | InvocationTargetException e) {
+                    throw new RuntimeException(e);
+                }
+            };
+            result.put(m.getName(), f);
 
         }
         return result;

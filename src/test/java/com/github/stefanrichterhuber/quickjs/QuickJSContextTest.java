@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -85,7 +86,7 @@ public class QuickJSContextTest {
             }
             // Function
             {
-                context.setGlobal("b", v -> "Hello " + v);
+                context.setGlobal("b", (Function<String, String>) v -> "Hello " + v);
                 Object v = context.eval("b('World')");
                 assertInstanceOf(String.class, v);
                 assertEquals("Hello World", v);
@@ -115,6 +116,27 @@ public class QuickJSContextTest {
                 context.eval("e('Hello', 'World')");
                 assertEquals("Hello World", result.join());
             }
+        }
+    }
+
+    /**
+     * VariadicFunction is the catch-all solution for all mapping for function calls
+     * not being matchable by the standard java.util.function package.
+     */
+    @Test
+    public void variadicFunctionTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            context.setGlobal("a", (VariadicFunction<Object>) (Object... args) -> {
+                StringBuilder sb = new StringBuilder();
+                for (Object s : args) {
+                    sb.append(s);
+                }
+                return sb.toString();
+            });
+
+            assertEquals("Hello World", context.eval("a('Hello',' ', 'World')"));
         }
     }
 
@@ -168,7 +190,7 @@ public class QuickJSContextTest {
                 Function<QuickJSFunction, String> f1 = f -> {
                     // Closing the function is necessary to prevent memory leaks
                     QuickJSFunction f2 = f;
-                    var r = f2.call("hello") + "!";
+                    var r = f2.apply("hello") + "!";
                     return r;
                 };
                 context.setGlobal("f10", f1);
@@ -196,7 +218,7 @@ public class QuickJSContextTest {
                 Object v = context.eval("let a = function() { return 'hello'; }; a");
                 assertInstanceOf(QuickJSFunction.class, v);
                 QuickJSFunction f = (QuickJSFunction) v;
-                assertEquals("hello", f.call());
+                assertEquals("hello", f.apply());
 
             }
             // One parameter
@@ -204,29 +226,29 @@ public class QuickJSContextTest {
                 Object v = context.eval("let b = function(v) { return 'hello ' + v; }; b");
                 assertInstanceOf(QuickJSFunction.class, v);
                 QuickJSFunction f = (QuickJSFunction) v;
-                assertEquals("hello world", f.call("world"));
+                assertEquals("hello world", f.apply("world"));
             }
             // Two parameters
             {
                 Object v = context.eval("let c = function(v1, v2) { return v1 + ' ' + v2; };c");
                 assertInstanceOf(QuickJSFunction.class, v);
                 QuickJSFunction f = (QuickJSFunction) v;
-                assertEquals("hello world", f.call("hello", "world"));
+                assertEquals("hello world", f.apply("hello", "world"));
             }
             // Call multiple times to ensure stability
             {
                 Object v = context.eval("let d = function() { return 'hello'; }; d");
                 assertInstanceOf(QuickJSFunction.class, v);
                 QuickJSFunction f = (QuickJSFunction) v;
-                assertEquals("hello", f.call());
-                assertEquals("hello", f.call());
-                assertEquals("hello", f.call());
-                assertEquals("hello", f.call());
-                assertEquals("hello", f.call());
-                assertEquals("hello", f.call());
-                assertEquals("hello", f.call());
-                assertEquals("hello", f.call());
-                assertEquals("hello", f.call());
+                assertEquals("hello", f.apply());
+                assertEquals("hello", f.apply());
+                assertEquals("hello", f.apply());
+                assertEquals("hello", f.apply());
+                assertEquals("hello", f.apply());
+                assertEquals("hello", f.apply());
+                assertEquals("hello", f.apply());
+                assertEquals("hello", f.apply());
+                assertEquals("hello", f.apply());
             }
             // Get a global function
             {
@@ -235,7 +257,7 @@ public class QuickJSContextTest {
                 Object v = context.getGlobal("e");
                 assertInstanceOf(QuickJSFunction.class, v);
                 QuickJSFunction f = (QuickJSFunction) v;
-                assertEquals("hello", f.call());
+                assertEquals("hello", f.apply());
             }
 
         }
@@ -331,19 +353,19 @@ public class QuickJSContextTest {
                     Object a = context.eval("b.a");
                     assertInstanceOf(QuickJSFunction.class, a);
                     QuickJSFunction f = (QuickJSFunction) a;
-                    assertEquals("hellohellohello", f.call("hello"));
+                    assertEquals("hellohellohello", f.apply("hello"));
                 }
                 {
                     Object b = context.eval("b.b");
                     assertInstanceOf(QuickJSFunction.class, b);
                     QuickJSFunction f = (QuickJSFunction) b;
-                    assertEquals("hello world", f.call());
+                    assertEquals("hello world", f.apply());
                 }
                 {
                     Object c = context.eval("b.c");
                     assertInstanceOf(QuickJSFunction.class, c);
                     QuickJSFunction f = (QuickJSFunction) c;
-                    assertEquals("hello world", f.call("hello", "world"));
+                    assertEquals("hello world", f.apply("hello", "world"));
                 }
             }
 
@@ -393,7 +415,7 @@ public class QuickJSContextTest {
                 Object fc = m.get("a");
                 assertInstanceOf(QuickJSFunction.class, fc);
                 QuickJSFunction f = (QuickJSFunction) fc;
-                assertEquals("hello", f.call());
+                assertEquals("hello", f.apply());
 
             }
         }
@@ -541,6 +563,18 @@ public class QuickJSContextTest {
             return "Hello " + name;
         }
 
+        public String f2(String a, String b) {
+            return a + " " + b;
+        }
+
+        public String f3(String a, String b, String c) {
+            return a + " " + b + " " + c;
+        }
+
+        public String f4(List<String> args) {
+            return args.stream().collect(Collectors.joining(" "));
+        }
+
         @Override
         public String toString() {
             return "TestClass";
@@ -577,9 +611,23 @@ public class QuickJSContextTest {
 
             try {
                 context.invoke("tx.call", "World");
+                fail();
             } catch (Exception e) {
                 // Expected since, tx does not exist
             }
+
+            Object r4 = context.invoke("tc.f2", "Hello", "World");
+            assertEquals("Hello World", r4);
+
+            Object r5 = context.invoke("tc.f3", "Hello", "World", "!");
+            assertEquals("Hello World !", r5);
+
+            Object r6 = context.invoke("tc.f4", List.of("Hello", "World", "!"));
+            assertEquals("Hello World !", r6);
+
+            // JS arrays are always converted to java.util.List
+            Object r7 = context.eval("tc.f4(['Hello', 'World', '!'])");
+            assertEquals("Hello World !", r7);
         }
     }
 }

@@ -1,16 +1,93 @@
 use std::rc::Rc;
 
 use jni::errors;
-use jni::objects::{JObjectArray, JThrowable, JValueGen};
+use jni::objects::{GlobalRef, JObjectArray, JThrowable, JValueGen};
 use jni::{
     objects::{JObject, JString},
     JNIEnv,
 };
 use log::{debug, error, warn};
-use rquickjs::{BigInt, Exception, Function, IntoJs, Value};
+use rquickjs::function::{IntoJsFunc, ParamRequirement};
+use rquickjs::{BigInt, Exception, FromJs, Function, IntoJs, Value};
 
 use crate::foreign_function::{function_to_ptr, ptr_to_function};
 use crate::js_java_proxy::JSJavaProxy;
+pub struct VariadicFunction {
+    target: Rc<GlobalRef>,
+    context: Rc<GlobalRef>,
+    vm: jni::JavaVM,
+}
+
+/// JS Wrapper for com.github.stefanrichterhuber.quickjs.VariadicFunction
+impl VariadicFunction {
+    /// Creates a new VariadicFunction with the necessary references to the function object itself, the global java QuickJSContet and the vm object.
+    /// * `target` - A java object of type com.github.stefanrichterhuber.quickjs.VariadicFunction
+    /// * `context` - A java object of type com.github.stefanrichterhuber.quickjs.QuickJSContext
+    /// * `vm` - A java vm object
+    fn new(target: Rc<GlobalRef>, context: Rc<GlobalRef>, vm: jni::JavaVM) -> VariadicFunction {
+        VariadicFunction {
+            target,
+            context,
+            vm,
+        }
+    }
+}
+
+impl<'js, P> IntoJsFunc<'js, P> for VariadicFunction {
+    fn param_requirements() -> rquickjs::function::ParamRequirement {
+        // We cannot give any hint on the number of expected parameters
+        ParamRequirement::any()
+    }
+
+    fn call<'a>(
+        &self,
+        params: rquickjs::function::Params<'a, 'js>,
+    ) -> rquickjs::Result<Value<'js>> {
+        let mut env = self.vm.get_env().unwrap();
+        // First convert parameters from js arg array to java object array
+        // Create java object array of the necessary size
+        let args_array = env
+            .new_object_array(params.len() as i32, "Ljava/lang/Object;", JObject::null())
+            .unwrap();
+
+        // Convert and copy parameters.
+        for i in 0..params.len() {
+            let value = params.arg(i);
+            if let Some(v) = value {
+                let proxied_value = JSJavaProxy::from_js(params.ctx(), v).unwrap();
+
+                if let Some(java_object) = proxied_value.into_jobject(&self.context, &mut env) {
+                    env.set_object_array_element(&args_array, i as i32, &java_object)
+                        .unwrap();
+                } else {
+                    error!("Error preparing parameters for com.github.stefanrichterhuber.quickjs.VariadicFunction: Could not convert value at index {} to java object. Set to `null`", i);
+                }
+            } else {
+                error!("Error preparing parameters for com.github.stefanrichterhuber.quickjs.VariadicFunction: JS value at index {} is none. Set to `null`", i);
+            }
+        }
+
+        debug!("Calling java function com.github.stefanrichterhuber.quickjs.VariadicFunction");
+
+        // Then finally call function
+        let call_result = env.call_method(
+            self.target.as_ref(),
+            "apply",
+            "([Ljava/lang/Object;)Ljava/lang/Object;",
+            &[jni::objects::JValueGen::Object(&args_array)],
+        );
+
+        let result = if env.exception_check().unwrap() {
+            let exception = env.exception_occurred().unwrap();
+            ProxiedJavaValue::from_throwable(&mut env, exception)
+        } else {
+            let result = call_result.unwrap().l().unwrap();
+            ProxiedJavaValue::from_object(&mut env, self.context.as_obj(), result)
+        };
+
+        result.into_js(params.ctx())
+    }
+}
 
 /// This the intermediate value when converting a Java to a JS value.
 pub enum ProxiedJavaValue {
@@ -23,6 +100,7 @@ pub enum ProxiedJavaValue {
     BIGDECIMAL(String),
     BIGINTEGER(i64),
     FUNCTION(Box<dyn Fn(Value<'_>) -> ProxiedJavaValue>),
+    VARFUNCTION(VariadicFunction),
     BIFUNCTION(Box<dyn Fn(Value<'_>, Value<'_>) -> ProxiedJavaValue>),
     SUPPLIER(Box<dyn Fn() -> ProxiedJavaValue>),
     MAP(Vec<(String, ProxiedJavaValue)>),
@@ -138,6 +216,22 @@ impl ProxiedJavaValue {
         ProxiedJavaValue::JSFUNCTION(ptr)
     }
 
+    /// Wraps a com.github.stefanrichterhuber.quickjs.VariadicFunction into a JS function
+    fn from_variadic_function<'vm>(
+        env: &mut JNIEnv<'vm>,
+        context: &JObject<'vm>,
+        obj: JObject<'vm>,
+    ) -> Self {
+        let target = Rc::new(env.new_global_ref(obj).unwrap());
+        let context = Rc::new(env.new_global_ref(context).unwrap());
+        // https://github.com/jni-rs/jni-rs/issues/488#issuecomment-1699852154
+        let vm = env.get_java_vm().unwrap();
+        debug!(
+            "Create JS function from Java com.github.stefanrichterhuber.quickjs.VariadicFunction"
+        );
+        ProxiedJavaValue::VARFUNCTION(VariadicFunction::new(target, context, vm))
+    }
+
     /// Wraps a java.util.function.BiConsumer into a JS function
     fn from_biconsumer<'vm>(
         env: &mut JNIEnv<'vm>,
@@ -150,6 +244,8 @@ impl ProxiedJavaValue {
         let vm = env.get_java_vm().unwrap();
 
         let f = move |v1: Value, v2: Value| {
+            debug!("Calling java function java.util.function.BiConsumer");
+
             let mut env = vm.get_env().unwrap();
 
             let p1 = JSJavaProxy::new(v1)
@@ -179,7 +275,7 @@ impl ProxiedJavaValue {
 
             result
         };
-        debug!("Create JS function from Java Bi Consumer<Object, Object>",);
+        debug!("Create JS function from Java BiConsumer<Object, Object>",);
         ProxiedJavaValue::BIFUNCTION(Box::new(f))
     }
 
@@ -195,6 +291,7 @@ impl ProxiedJavaValue {
         let vm = env.get_java_vm().unwrap();
 
         let f = move |v1: Value| {
+            debug!("Calling java function java.util.function.Consumer");
             let mut env = vm.get_env().unwrap();
 
             let p1 = JSJavaProxy::new(v1)
@@ -234,6 +331,7 @@ impl ProxiedJavaValue {
         let vm = env.get_java_vm().unwrap();
 
         let f = move || {
+            debug!("Calling java function java.util.function.Supplier");
             let mut env = vm.get_env().unwrap();
 
             let call_result: errors::Result<JValueGen<JObject<'_>>> =
@@ -265,6 +363,7 @@ impl ProxiedJavaValue {
         let vm = env.get_java_vm().unwrap();
 
         let f = move |msg: Value| {
+            debug!("Calling java function java.util.function.Function");
             let mut env = vm.get_env().unwrap();
 
             let param = JSJavaProxy::new(msg)
@@ -303,6 +402,7 @@ impl ProxiedJavaValue {
         let vm = env.get_java_vm().unwrap();
 
         let f = move |v1: Value, v2: Value| {
+            debug!("Calling java function java.util.function.BiFunction");
             let mut env = vm.get_env().unwrap();
 
             let p1 = JSJavaProxy::new(v1)
@@ -448,6 +548,20 @@ impl ProxiedJavaValue {
             ProxiedJavaValue::from_iterable(env, context, obj)
         } else if ProxiedJavaValue::is_instance_of("java/util/Map", env, &obj) {
             ProxiedJavaValue::from_map(env, context, obj)
+        } else if ProxiedJavaValue::is_instance_of(
+            "com/github/stefanrichterhuber/quickjs/QuickJSFunction",
+            env,
+            &obj,
+        ) {
+            // First check for the special case of QuickJSFunction, because it implements both VariadicFunction and Function
+            ProxiedJavaValue::from_quick_js_function(env, obj)
+        } else if ProxiedJavaValue::is_instance_of(
+            "com/github/stefanrichterhuber/quickjs/VariadicFunction",
+            env,
+            &obj,
+        ) {
+            // Then check for the more generic case of VariadicFunction because it also implements Function but has an object array as argument
+            ProxiedJavaValue::from_variadic_function(env, context, obj)
         } else if ProxiedJavaValue::is_instance_of("java/util/function/Consumer", env, &obj) {
             ProxiedJavaValue::from_consumer(env, context, obj)
         } else if ProxiedJavaValue::is_instance_of("java/util/function/BiConsumer", env, &obj) {
@@ -458,12 +572,6 @@ impl ProxiedJavaValue {
             ProxiedJavaValue::from_supplier(env, context, obj)
         } else if ProxiedJavaValue::is_instance_of("java/util/function/Function", env, &obj) {
             ProxiedJavaValue::from_function(env, context, obj)
-        } else if ProxiedJavaValue::is_instance_of(
-            "com/github/stefanrichterhuber/quickjs/QuickJSFunction",
-            env,
-            &obj,
-        ) {
-            ProxiedJavaValue::from_quick_js_function(env, obj)
         } else if ProxiedJavaValue::is_array(env, &obj) {
             let array = JObjectArray::from(obj);
             ProxiedJavaValue::from_array(env, context, array)
@@ -569,6 +677,11 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
                 }
 
                 Ok(Value::from_array(obj))
+            }
+            ProxiedJavaValue::VARFUNCTION(f) => {
+                let func = Function::new::<JObject, VariadicFunction>(ctx.clone(), f).unwrap();
+                let s = Value::from_function(func);
+                Ok(s)
             }
         };
         result

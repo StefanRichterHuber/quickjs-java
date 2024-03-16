@@ -38,8 +38,10 @@ Import library
 And then create a QuickJS runtime and QuickJS context and start using Javascript.
 
 ```Java
-try (QuickJSRuntime runtime = new QuickJSRuntime();
-    QuickJSContext context = runtime.createContext()) {
+try (QuickJSRuntime runtime = new QuickJSRuntime(); // A QuickJSRuntime manages resource limits
+    QuickJSContext context = runtime.createContext()) { // A QuickJSContext manages an independent namespace
+    
+    runtime.withScriptRuntimeLimit(1, TimeUnit.SECONDS);
 
     // Set global variable. For supported types, see table below.
     context.setGlobal("a", "hello");
@@ -69,22 +71,23 @@ For further examples look at `com.github.stefanrichterhuber.quickjs.QuickJSConte
 The rust library seamlessly translates all supported Java types to JS types and back. Translation is always a copy operation so changes to an `object` created from a `Map` won't be written back to map, for example. A Java function imported into the JS context will be exported as `com.github.stefanrichterhuber.quickjs.QuickJSFunction`.
 All supported Java types can be used as globals, retrieved as globals or used as function parameters or return values and map values.
 
-| Java type                                               |      JS Type            |  Remark                                                                                                                                                                       |
-|---------------------------------------------------------|:-----------------------:|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `null`                                                  | `null`                  | Both js `null` and `undefined` are mapped to Java `null`.                                                                                                                       |
-| `java.lang.Integer`                                     | `int`                   | -                                                                                                                                                                             |
-| `java.lang.Double` / `java.lang.Float`                  | `float` ( 64-bit)       | rquickjs only supports 64-bit floats                                                                                                                                          |
-| `java.lang.String`                                      | `string`                | -                                                                                                                                                                             |
-| `java.lang.Boolean`                                     | `bool`                  | -                                                                                                                                                                             |
-| `java.util.Map<String, ?>`                              | `object`                | Key is expected to be a String, values can be of any of the supported Java types, including another map or functions!                                                         |
-| `java.lang.Iterable<?>`                                 | `array`                 | Iterable is copied value by value to JS array. JS arrays are converted to `java.util.ArrayList`. Values can be of any of the supported Java types.                            |
-| `java.lang.Object[]`                                    | `array`                 | Array is copied value by value to JS array.  If extracted back from JS, the array will always return as a `java.util.ArrayList`.                                              |
-| `java.util.function.Function<?,?>`                      | `function`              | both parameter and return type could be any of the supported Java types                                                                                                       |
-| `java.util.function.Supplier<?>`                        | `function`              | return type could be any of the supported Java types                                                                                                                          |
-| `java.util.function.BiFunction<?,?,?>`                  | `function`              | both parameters and return type could be any of the supported Java types                                                                                                      |
-| `java.util.function.Consumer<?>`                        | `function`              | parameter could be any of the supported Java types                                                                                                                            |
-| `java.util.function.BiConsumer<?, ?>`                   | `function`              | parameter could be any of the supported Java types                                                                                                                            |
-| `com.github.stefanrichterhuber.quickjs.QuickJSFunction` | `function`              | if js returns a function, its converted to a QuickJSFunction which can be called from Java or added back to the JS context where it will be transformed back to a function    |
+| Java type                                                   |      JS Type            |  Remark                                                                                                                                                                       |
+|-------------------------------------------------------------|:-----------------------:|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `null`                                                      | `null`                  | Both js `null` and `undefined` are mapped to Java `null`.                                                                                                                     |
+| `java.lang.Integer`                                         | `int`                   | -                                                                                                                                                                             |
+| `java.lang.Double` / `java.lang.Float`                      | `float` ( 64-bit)       | rquickjs only supports 64-bit floats                                                                                                                                          |
+| `java.lang.String`                                          | `string`                | -                                                                                                                                                                             |
+| `java.lang.Boolean`                                         | `bool`                  | -                                                                                                                                                                             |
+| `java.util.Map<String, ?>`                                  | `object`                | Key is expected to be a String, values can be of any of the supported Java types, including another map or functions!                                                         |
+| `java.lang.Iterable<?>`                                     | `array`                 | Iterable is copied value by value to JS array. JS arrays are converted to `java.util.ArrayList`. Values can be of any of the supported Java types.                            |
+| `java.lang.Object[]`                                        | `array`                 | Array is copied value by value to JS array.  If extracted back from JS, the array will always return as a `java.util.ArrayList`.                                              |
+| `java.util.function.Function<?,?>`                          | `function`              | both parameter and return type could be any of the supported Java types                                                                                                       |
+| `java.util.function.Supplier<?>`                            | `function`              | return type could be any of the supported Java types                                                                                                                          |
+| `java.util.function.BiFunction<?,?,?>`                      | `function`              | both parameters and return type could be any of the supported Java types                                                                                                      |
+| `java.util.function.Consumer<?>`                            | `function`              | parameter could be any of the supported Java types                                                                                                                            |
+| `java.util.function.BiConsumer<?, ?>`                       | `function`              | parameter could be any of the supported Java types                                                                                                                            |
+| `com.github.stefanrichterhuber.quickjs.VariadicFunction<?>` | `function`              | Java function with an `java.lang.Object` array (variardic parameters) as parameter, a generic solution when other functions don't work. Requires manual casts                 |
+| `com.github.stefanrichterhuber.quickjs.QuickJSFunction`     | `function`              | if js returns a function, its converted to a QuickJSFunction which can be called from Java or added back to the JS context where it will be transformed back to a function    |
 
 ### Logging
 
@@ -107,4 +110,4 @@ The project consists of three layers:
 3. `QuickJS` runtime.
 
 "Classic" Java JNI was preferred over the newer "Foreign Function and Memory API", since the native library is only planned to be used with Java so it could be tailored to its use. This allows more direct Rust - Java interactions like easily calling Java methods on objects or even create new Java objects using their constructor. A "Foreign Function an Memory API" approach would have resulted in a thinner native layer with far higher implementation effort on the Java side for all the type conversion, especially sacrificing the type and lifetime safety the current rust layer provides for the QuickJS runtime.
-There are, however, a few unsafe hacks within the native layer, since the lifetime of the QuickJS runtime, context and an exported function is not managed by the native Rust layer but by the Java runtime (therefore all of them implementing `java.lang.AutoClosable`), which requires conversion of boxed objects to raw pointers and back.
+There are, however, a few unsafe hacks within the native layer, since the lifetime of the QuickJS runtime, context and an exported functions is not managed by the native Rust layer but by the Java runtime (therefore all of them implementing `java.lang.AutoClosable`), which requires conversion of boxed objects to raw pointers and back. A `java.lang.ref.Cleaner` is used in the `QuickJSRuntime` to ensure a cleanup if the runtime gets garbage collected without proper closing the runtime and dependent resources (contexts and functions).
