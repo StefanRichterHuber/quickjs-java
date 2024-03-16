@@ -10,9 +10,14 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+/**
+ * Collection of static utility methods to transform java objects into object
+ * suitable for the QuickJSRuntime.
+ */
 public class QuickJSUtils {
     private QuickJSUtils() {
         // utility class
+        throw new IllegalAccessError("Class should not be constructed");
     }
 
     /**

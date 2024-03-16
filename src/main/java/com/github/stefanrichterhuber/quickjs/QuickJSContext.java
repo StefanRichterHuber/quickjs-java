@@ -60,22 +60,74 @@ public class QuickJSContext implements AutoCloseable {
 
     }
 
+    /**
+     * Reference to the underlying runtime, owning this context
+     */
     private final QuickJSRuntime runtime;
+
+    /**
+     * Native pointer to the QuickJS context
+     */
     private long ptr;
+
+    /**
+     * Dependent resources which are managed within this scope. Especially
+     * QuickJSFunctions are managed here.
+     */
     private final Set<AutoCloseable> dependedResources = new HashSet<>();
 
+    /**
+     * Create a new native QuickJS context
+     */
     private static native long createContext(long runtimePtr);
 
+    /**
+     * Closes a native QuickJS context
+     */
     private static native void closeContext(long ptr);
 
+    /**
+     * Sets a global variable in the native QuickJS context. The value gets
+     * converted in the native layer to a JS value.
+     * 
+     * @param ptr   Native pointer to the QuickJS context
+     * @param name  Name of the variable
+     * @param value value
+     */
     private native void setGlobal(long ptr, String name, Object value);
 
+    /**
+     * Gets a global variable from the native QuickJS context. The JS value gets
+     * converted into a Java value in the native layer.
+     * 
+     * @param ptr  Native pointer to the QuickJS context
+     * @param name Name of the variable
+     * @return value
+     */
     private native Object getGlobal(long ptr, String name);
 
+    /**
+     * Executes a JS script in the native layer
+     * 
+     * @param ptr    Native pointer to the QuickJS context
+     * @param script Script to execute
+     * @return Result of the script
+     */
     private native Object eval(long ptr, String script);
 
+    /**
+     * Invokes a JS function in the native layer
+     *
+     * @param ptr  Native pointer to the QuickJS context
+     * @param name Name of the function
+     * @param args Arguments to the function
+     * @return Result of the function
+     */
     private native Object invoke(long ptr, String name, Object... args);
 
+    /**
+     * First closes all dependent resources and then this context
+     */
     @Override
     public void close() throws Exception {
         if (ptr != 0) {
@@ -83,7 +135,7 @@ public class QuickJSContext implements AutoCloseable {
                 try {
                     f.close();
                 } catch (Exception e) {
-                    LOGGER.error("Failed to close runtime dependent resource", e);
+                    LOGGER.error("Failed to close context dependent resource", e);
                 }
             }
             closeContext(ptr);
@@ -94,7 +146,7 @@ public class QuickJSContext implements AutoCloseable {
     /**
      * Creates a new QuickJSContext instance from a QuickJSRuntime
      * 
-     * @param runtime
+     * @param runtime QuickJSRuntime this QuickJSContext is based on
      */
     QuickJSContext(QuickJSRuntime runtime) {
         this.runtime = runtime;
@@ -102,9 +154,10 @@ public class QuickJSContext implements AutoCloseable {
     }
 
     /**
-     * Returns the native pointer to the QuickJS context
+     * Returns the native pointer to the QuickJS context. First check if this
+     * context is still active at all (a native QuickJS context exists)
      * 
-     * @return native pointer
+     * @return native pointer to an active QuickJS context.
      */
     long getContextPointer() {
         if (ptr == 0) {
@@ -358,6 +411,10 @@ public class QuickJSContext implements AutoCloseable {
                 clazz);
     }
 
+    /**
+     * Adds a dependent resource to be managed by this QuickJSContext (especially a
+     * QuickJSFunction)
+     */
     void addDependentResource(AutoCloseable f) {
         this.dependedResources.add(f);
     }

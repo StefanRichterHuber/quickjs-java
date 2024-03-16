@@ -19,14 +19,8 @@ public class QuickJSFunction implements VariadicFunction<Object> {
     /**
      * Native pointer to js function
      */
-    /**
-     * Native pointer to js function
-     */
     long ptr;
 
-    /**
-     * QuickJSContext this function is bound to. Might be null
-     */
     /**
      * QuickJSContext this function is bound to. Might be null
      */
@@ -64,9 +58,9 @@ public class QuickJSFunction implements VariadicFunction<Object> {
     }
 
     /**
-     * Resource management is delegate to the QuickJSContext of the function.
+     * Resource management is delegated to the QuickJSContext of the function.
      * Therefore it is not necessary to give the user the ability to close the
-     * underlying resources
+     * underlying native resources
      */
     void close() throws RuntimeException {
         if (this.ptr != 0) {
@@ -95,6 +89,9 @@ public class QuickJSFunction implements VariadicFunction<Object> {
         }
     }
 
+    /**
+     * QuickJSFunctions are equal by their native pointer.
+     */
     @Override
     public boolean equals(Object obj) {
         return obj instanceof QuickJSFunction && ((QuickJSFunction) obj).ptr == this.ptr;

@@ -120,7 +120,7 @@ public class QuickJSContextTest {
     }
 
     /**
-     * VariadicFunction is the catch-all solution for all mapping for function calls
+     * VariadicFunction is the fall-back solution for all mapping for function calls
      * not being matchable by the standard java.util.function package.
      */
     @Test

@@ -35,6 +35,11 @@ public class QuickJSRuntime implements AutoCloseable {
     private static final Logger LOGGER = LogManager.getLogger();
     private static final Logger NATIVE_LOGGER = LogManager.getLogger("[QuickJS native library]");
 
+    /**
+     * This job for Cleaner first closes all dependent resources (e.g.
+     * QuickJSContext and QuickJSFunction) and then the QuickJSRuntime itself within
+     * the native layer.
+     */
     private static class CleanJob implements Runnable {
         private long ptr;
         /**
@@ -65,6 +70,7 @@ public class QuickJSRuntime implements AutoCloseable {
 
     // Loads the native library and initializes logging
     static {
+        // Load the native library
         JarJniLoader.loadLib(
                 QuickJSRuntime.class,
                 // A platform-specific path is automatically suffixed to path below.
@@ -73,6 +79,7 @@ public class QuickJSRuntime implements AutoCloseable {
                 // needed.
                 "javaquickjs");
 
+        // Initialize native logging
         if (NATIVE_LOGGER.getLevel() == Level.ERROR || LOGGER.getLevel() == Level.FATAL) {
             initLogging(1);
         } else if (NATIVE_LOGGER.getLevel() == Level.WARN) {
@@ -136,7 +143,7 @@ public class QuickJSRuntime implements AutoCloseable {
 
     /**
      * Number of milliseconds a script is allowed to run. Defaults to infinite
-     * runtime.
+     * runtime (scriptRuntimeLimit = -1)
      */
     private long scriptRuntimeLimit = -1;
 
@@ -266,7 +273,7 @@ public class QuickJSRuntime implements AutoCloseable {
      * @param limit
      * @return this QuickJSRuntime instance for method chaining.
      */
-    public QuickJSRuntime setMaxStackSize(long size) {
+    public QuickJSRuntime withMaxStackSize(long size) {
         setMaxStackSize(getRuntimePointer(), size);
         return this;
     }
@@ -289,7 +296,7 @@ public class QuickJSRuntime implements AutoCloseable {
     }
 
     /**
-     * QuickJS runtimes are equal by their native pointer
+     * QuickJSRuntimes are equal by their native pointer
      */
     @Override
     public boolean equals(Object obj) {
