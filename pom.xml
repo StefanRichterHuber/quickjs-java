@@ -21,6 +21,21 @@
     <rust.release>true</rust.release>
   </properties>
 
+  <scm>
+    <connection>scm:git:https://github.com/StefanRichterHuber/quickjs-java</connection>
+    <developerConnection>scm:git:https://github.com/StefanRichterHuber/quickjs-java</developerConnection>
+    <url>https://github.com/StefanRichterHuber/quickjs-java</url>
+  </scm>
+
+  <distributionManagement>
+    <repository>
+      <id>github</id>
+      <name>GitHub StefanRichterHuber Apache Maven Packages</name>
+      <url>https://maven.pkg.github.com/StefanRichterHuber/quickjs-java</url>
+    </repository>
+  </distributionManagement>
+
+
   <dependencies>
     <!-- To locate platform specific library -->
     <dependency>
