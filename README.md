@@ -1,3 +1,5 @@
+[![Maven CI](https://github.com/StefanRichterHuber/quickjs-java/actions/workflows/maven.yml/badge.svg)](https://github.com/StefanRichterHuber/quickjs-java/actions/workflows/maven.yml)
+
 # QuickJS Java
 
 This is a Java library to use [QuickJS from Fabrice Bellard](https://bellard.org/quickjs/) with Java. It uses a native library build with Rust which uses [rquickjs](https://github.com/DelSkayn/rquickjs) to interface QuickJS and [jni-rs](https://github.com/jni-rs/jni-rs) for Java - Rust interop.
@@ -60,7 +62,7 @@ try (QuickJSRuntime runtime = new QuickJSRuntime(); // A QuickJSRuntime manages 
 
     String r2 = (String) context.invoke("f2", "World");
     assertEquals("Hello from JS dear World", r2);
-}
+
     assertEquals(7, (Integer)v);
 
     // Set both a function from java as well as create a native JS function
