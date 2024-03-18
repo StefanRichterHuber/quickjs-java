@@ -2,7 +2,9 @@ use jni::objects::JValue;
 use jni::{objects::JObject, signature::ReturnType, sys::jlong, JNIEnv};
 use log::debug;
 use log::error;
+use rquickjs::atom::PredefinedAtom;
 use rquickjs::{FromJs, Value};
+
 /// This proxy assist in converting JS values to Java values
 pub struct JSJavaProxy<'js> {
     pub value: Value<'js>,
@@ -10,16 +12,18 @@ pub struct JSJavaProxy<'js> {
 
 impl<'js> FromJs<'js> for JSJavaProxy<'js> {
     fn from_js(_ctx: &rquickjs::Ctx<'js>, value: Value<'js>) -> rquickjs::Result<Self> {
-        Ok(JSJavaProxy { value })
+        Ok(JSJavaProxy::new(value))
     }
 }
 
 impl<'js, 'vm> JSJavaProxy<'js> {
+    /// Creates a new JSJavaProxy from a JS value
     pub fn new(value: Value<'js>) -> Self {
         JSJavaProxy { value }
     }
 
-    // Converts the stored JS value to an Java object
+    /// Converts the stored JS value to an Java object
+    /// - `context` Instance of `com.github.stefanrichterhuber.quickjs.QuickJSContext`, the java object managing the js context.
     pub fn into_jobject(
         self,
         context: &JObject<'vm>,
@@ -70,6 +74,12 @@ impl<'js, 'vm> JSJavaProxy<'js> {
             let f = self.value.as_function().unwrap();
             let f = f.clone();
 
+            let function_name: Result<JSJavaProxy, _> = f.get(PredefinedAtom::Name);
+            let function_name = match function_name {
+                Ok(s) => s.into_jobject(context, env).unwrap(),
+                Err(_) => JObject::null(),
+            };
+
             let func = Box::new(f);
             let ptr = Box::into_raw(func) as jlong;
 
@@ -79,9 +89,10 @@ impl<'js, 'vm> JSJavaProxy<'js> {
 
             let result = env.new_object(
                 js_function_class,
-                "(JLcom/github/stefanrichterhuber/quickjs/QuickJSContext;)V",
+                "(JLjava/lang/String;Lcom/github/stefanrichterhuber/quickjs/QuickJSContext;)V",
                 &[
                     jni::objects::JValueGen::Long(ptr),
+                    jni::objects::JValueGen::Object(&function_name),
                     jni::objects::JValueGen::Object(context),
                 ],
             );

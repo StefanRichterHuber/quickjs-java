@@ -78,8 +78,8 @@
             </goals>
             <configuration>
               <path>src/main/rust/quickjslib</path>
-              <copyTo>
-                src/main/resources/libs</copyTo>
+              <!-- Copy directly to the project classes -->
+              <copyTo>${project.build.directory}/classes/com/github/stefanrichterhuber/quickjs/libs</copyTo>
               <copyWithPlatformDir>true</copyWithPlatformDir>
               <release>${rust.release}</release>
             </configuration>

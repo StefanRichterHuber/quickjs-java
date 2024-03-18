@@ -121,6 +121,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSRuntime
     _ = runtime_to_ptr(runtime);
 }
 
+/// Base for custom `log::Log` implementation, which allows delegating log output to the Java runtime.
 struct JavaLogContext {
     method_id: jni::objects::JStaticMethodID,
     vm: jni::JavaVM,
@@ -141,20 +142,21 @@ impl log::Log for JavaLogContext {
             let mut env: JNIEnv<'_> = self.vm.get_env().unwrap();
             let level_int = record.level() as i32;
             let message = format!("{} {}", record.metadata().target(), record.args());
-            let message_string = env.new_string(message).unwrap();
 
-            let _result = unsafe {
-                env.call_static_method_unchecked(
-                    "com/github/stefanrichterhuber/quickjs/QuickJSRuntime",
-                    method_id,
-                    ReturnType::Primitive(jni::signature::Primitive::Void),
-                    &[
-                        JValue::Int(level_int).as_jni(),
-                        JValue::Object(&message_string).as_jni(),
-                    ],
-                )
+            if let Ok(message_string) = env.new_string(message) {
+                let _result = unsafe {
+                    env.call_static_method_unchecked(
+                        "com/github/stefanrichterhuber/quickjs/QuickJSRuntime",
+                        method_id,
+                        ReturnType::Primitive(jni::signature::Primitive::Void),
+                        &[
+                            JValue::Int(level_int).as_jni(),
+                            JValue::Object(&message_string).as_jni(),
+                        ],
+                    )
+                }
+                .unwrap();
             }
-            .unwrap();
         }
     }
 

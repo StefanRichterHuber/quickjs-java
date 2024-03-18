@@ -17,14 +17,19 @@ public class QuickJSFunction implements VariadicFunction<Object> {
     private static final Logger LOGGER = LogManager.getLogger();
 
     /**
+     * Java script name of the function
+     */
+    private final String name;
+
+    /**
      * Native pointer to js function
      */
     long ptr;
 
     /**
-     * QuickJSContext this function is bound to. Might be null
+     * QuickJSContext this function is bound to.
      */
-    private QuickJSContext ctx;
+    private final QuickJSContext ctx;
 
     /**
      * Clean up native references to this function, must be called eventually to
@@ -43,8 +48,16 @@ public class QuickJSFunction implements VariadicFunction<Object> {
      */
     private native Object callFunction(long ptr, Object... args);
 
-    // TODO add name of the function from js?
-    QuickJSFunction(long ptr, QuickJSContext context) {
+    /**
+     * Creates a new QuickJSFunction instance. This constructor is meant to be
+     * called by the native library and therefore is not public
+     * 
+     * @param ptr     Native pointer to the js function. Must not be 0.
+     * @param name    JS name of the function (might be null)
+     * @param context QuickJSContext this function is bound to. Used for resource
+     *                management, must not be null.
+     */
+    QuickJSFunction(long ptr, String name, QuickJSContext context) {
         if (ptr == 0) {
             throw new IllegalArgumentException("Pointer must not be 0");
         }
@@ -53,6 +66,7 @@ public class QuickJSFunction implements VariadicFunction<Object> {
         }
         this.ptr = ptr;
         this.ctx = context;
+        this.name = name;
         // This function is closed, when the underlying context is closed
         context.addDependentResource(this::close);
     }
@@ -62,7 +76,7 @@ public class QuickJSFunction implements VariadicFunction<Object> {
      * Therefore it is not necessary to give the user the ability to close the
      * underlying native resources
      */
-    void close() throws RuntimeException {
+    private void close() throws RuntimeException {
         if (this.ptr != 0) {
             closeFunction(ptr);
             LOGGER.debug("Closed QuickJSFunction with id {}", ptr);
@@ -87,6 +101,21 @@ public class QuickJSFunction implements VariadicFunction<Object> {
         } else {
             throw new IllegalStateException("QuickJSFunction already closed!");
         }
+    }
+
+    /**
+     * Javascript name of the function, might be null.
+     * 
+     * @return Name of the function
+     */
+    public String getName() {
+        return this.name;
+    }
+
+    @Override
+    public String toString() {
+        return "QuickJSFunction " + (this.name == null || this.name.isBlank() ? "<unknown>" : this.name)
+                + "() with id " + this.ptr;
     }
 
     /**

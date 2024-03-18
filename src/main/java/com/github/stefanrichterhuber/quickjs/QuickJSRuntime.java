@@ -18,11 +18,6 @@ import io.questdb.jar.jni.JarJniLoader;
  * resources (both memory and time) allowed to be used for scripts. It is not
  * thread safe!
  */
-/**
- * QuickJSRuntime is the root object for managing QuickJS. It manages the
- * resources (both memory and time) allowed to be used for scripts. It is not
- * thread safe!
- */
 public class QuickJSRuntime implements AutoCloseable {
     /**
      * Use the cleaner to ensure Runtime and dependent resources (like Contexts and
@@ -74,12 +69,13 @@ public class QuickJSRuntime implements AutoCloseable {
         JarJniLoader.loadLib(
                 QuickJSRuntime.class,
                 // A platform-specific path is automatically suffixed to path below.
-                "/libs",
+                "/com/github/stefanrichterhuber/quickjs/libs",
                 // The "lib" prefix and ".so|.dynlib|.dll" suffix are added automatically as
                 // needed.
                 "javaquickjs");
 
-        // Initialize native logging
+        // Initialize native logging. This is only possible once, otherwise the rust log
+        // library fails
         if (NATIVE_LOGGER.getLevel() == Level.ERROR || LOGGER.getLevel() == Level.FATAL) {
             initLogging(1);
         } else if (NATIVE_LOGGER.getLevel() == Level.WARN) {
@@ -156,8 +152,6 @@ public class QuickJSRuntime implements AutoCloseable {
     /**
      * This method is called by the native code to log a message.
      * 
-     * @param level   Log level
-     * @param message Message to log
      * @param level   Log level
      * @param message Message to log
      */

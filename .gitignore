@@ -1,3 +1,2 @@
 target/
-src/main7rust/target/
-src/main/resources/libs/linux-x86-64/libjavaquickjs.so
+src/main/rust/target/
