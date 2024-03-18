@@ -33,7 +33,7 @@ Import library
 <dependency>
     <groupId>com.github.stefanrichterhuber</groupId>
     <artifactId>quickjs-Java</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <version>1.0</version>
 </dependency>
 ```
 
