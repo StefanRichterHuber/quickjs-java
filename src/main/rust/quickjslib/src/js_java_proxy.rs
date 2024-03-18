@@ -28,14 +28,11 @@ impl<'js, 'vm> JSJavaProxy<'js> {
     ) -> Option<JObject<'vm>> {
         if self.value.is_null() {
             debug!("Map JS null to Java null");
-            debug!("Map JS null to Java null");
             return Some(JObject::null());
         } else if self.value.is_undefined() {
             debug!("Map JS undefined to Java null");
-            debug!("Map JS undefined to Java null");
             return Some(JObject::null());
         } else if self.value.is_array() {
-            debug!("Map JS array to Java java.util.ArrayList",);
             debug!("Map JS array to Java java.util.ArrayList",);
             let array = self.value.as_array().unwrap();
             let len = array.len() as i32;
@@ -135,20 +132,10 @@ impl<'js, 'vm> JSJavaProxy<'js> {
                         )
                         .unwrap()
                     };
-                    unsafe {
-                        env.call_method_unchecked(
-                            &hash_map,
-                            put_id,
-                            ReturnType::Object,
-                            &[JValue::Object(&k).as_jni(), JValue::Object(&v).as_jni()],
-                        )
-                        .unwrap()
-                    };
                 }
             }
             return Some(hash_map);
         } else if self.value.is_float() {
-            debug!("Map JS float to Java java.lang.Double",);
             debug!("Map JS float to Java java.lang.Double",);
 
             let value = self.value.as_float().unwrap();
@@ -167,7 +154,6 @@ impl<'js, 'vm> JSJavaProxy<'js> {
             return Some(object);
         } else if self.value.is_int() {
             debug!("Map JS int to Java java.lang.Integer",);
-            debug!("Map JS int to Java java.lang.Integer",);
 
             let value = self.value.as_int().unwrap();
             let class = env
@@ -185,13 +171,11 @@ impl<'js, 'vm> JSJavaProxy<'js> {
             return Some(object);
         } else if self.value.is_string() {
             debug!("Map JS string to Java java.lang.String",);
-            debug!("Map JS string to Java java.lang.String",);
             let value: String = self.value.as_string().unwrap().get().unwrap();
             let object = env.new_string(value).unwrap().into();
 
             return Some(object);
         } else if self.value.is_bool() {
-            debug!("Map JS bool to Java java.lang.Boolean",);
             debug!("Map JS bool to Java java.lang.Boolean",);
             let value = self.value.as_bool().unwrap();
             let class = env
