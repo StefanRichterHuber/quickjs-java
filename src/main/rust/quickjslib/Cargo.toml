@@ -20,10 +20,18 @@ rquickjs = { version = "0.5.1", features = [
     #  "dump-objects",
     #  "dump-read-object",
     #  "dump-bytecode",
+    "bindgen",
 ] }
 jni = { version = "0.21" }
 log = { version = "0.4", features = ["std"] }
+lazy_static = "1.4.0"
+
+[patch.crates-io]
+# Lazy static is required for 'invocation' feature of jni and 'bindgen' feature of rquickjs, but produces some type errors in the latest published verson 1.4 
+lazy_static = { git = "https://github.com/rust-lang-nursery/lazy-static.rs", branch = "master" }
+
 
 [dev-dependencies]
 # Invocation feature is necessary for tests to spin up a VM
 jni = { version = "0.21", features = ["invocation"] }
+simple_logger = "4.3.3"

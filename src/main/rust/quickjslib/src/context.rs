@@ -9,6 +9,7 @@ use jni::{
     JNIEnv,
 };
 use log::debug;
+use log::trace;
 use rquickjs::{Context, Error, Value};
 
 // ----------------------------------------------------------------------------------------
@@ -223,7 +224,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
             Ok(f) => {
                 // Then check if the global object found is a function. If it is, invoke it with the given arguments. If it is not, throw an exception.
                 if f.is_function() {
-                    debug!("Invoking JS function with name {}()", function_name);
+                    trace!("Invoking JS function with name {}()", function_name);
                     let func = f.as_function().unwrap();
                     let result = foreign_function::invoke_js_function_with_java_parameters(
                         _env, &_obj, func, args,

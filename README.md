@@ -113,7 +113,7 @@ This library uses log4j2 for logging on the java side and the `log` crate on the
 - [x] Allow the user to stop script running too long
 - [ ] Fix issues around float values ( e.g. `eval("2.37")` results in an int `2`)
 - [ ] Support cross-build of native library in maven, so multiple arches are supported out-of-the box.
-- [ ] Fix issues with forwarding log messages from native to Java runtime at `trace` level. It results in an infinite loop, because JNI also logs at `trace` level.
+- [x] Fix issues with forwarding log messages from native to Java runtime at `trace` level. It results in an infinite loop, because JNI also logs at `trace` level.
 
 ## Architecture
 
