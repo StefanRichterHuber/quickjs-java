@@ -45,8 +45,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSRuntime
             )
             .unwrap()
         };
-        let result = result.z().unwrap();
-        result
+        result.z().unwrap()
     };
 
     runtime.set_interrupt_handler(Some(Box::new(handler)));
@@ -56,8 +55,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSRuntime
 
 /// Converts a pointer to a runtime back to a Box<Runtime>.
 pub(crate) fn ptr_to_runtime(runtime_ptr: jlong) -> Box<Runtime> {
-    let runtime = unsafe { Box::from_raw(runtime_ptr as *mut Runtime) };
-    runtime
+    unsafe { Box::from_raw(runtime_ptr as *mut Runtime) }
 }
 
 pub(crate) fn runtime_to_ptr(runtime: Box<Runtime>) -> jlong {

@@ -14,7 +14,7 @@ import java.util.function.Supplier;
  * Collection of static utility methods to transform java objects into object
  * suitable for the QuickJSRuntime.
  */
-public class QuickJSUtils {
+public final class QuickJSUtils {
     private QuickJSUtils() {
         // utility class
         throw new IllegalAccessError("Class should not be constructed");

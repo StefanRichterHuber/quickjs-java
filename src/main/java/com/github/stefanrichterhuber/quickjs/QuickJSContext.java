@@ -2,8 +2,6 @@ package com.github.stefanrichterhuber.quickjs;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
-import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
@@ -202,28 +200,6 @@ public class QuickJSContext implements AutoCloseable {
      * @param name  Name of the variable
      * @param value Value of the variable
      */
-    private void setGlobal(String name, BigInteger value) {
-        // FIXME currently not supported by rquickjs
-        this.setGlobal(getContextPointer(), name, value);
-    }
-
-    /**
-     * Adds a global variable to the context.
-     * 
-     * @param name  Name of the variable
-     * @param value Value of the variable
-     */
-    private void setGlobal(String name, long value) {
-        // FIXME currently not supported by rquickjs
-        this.setGlobal(getContextPointer(), name, value);
-    }
-
-    /**
-     * Adds a global variable to the context.
-     * 
-     * @param name  Name of the variable
-     * @param value Value of the variable
-     */
     public void setGlobal(String name, String value) {
         this.setGlobal(getContextPointer(), name, value);
     }
@@ -267,17 +243,6 @@ public class QuickJSContext implements AutoCloseable {
      * @param value Value of the variable
      */
     public <T> void setGlobal(String name, T[] value) {
-        this.setGlobal(getContextPointer(), name, value);
-    }
-
-    /**
-     * Adds a global variable to the context.
-     * 
-     * @param name  Name of the variable
-     * @param value Value of the variable
-     */
-    private void setGlobal(String name, BigDecimal value) {
-        // TODO rquickjs currently does not support BigDecimal directly
         this.setGlobal(getContextPointer(), name, value);
     }
 

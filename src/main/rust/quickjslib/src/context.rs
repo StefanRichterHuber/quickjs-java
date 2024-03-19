@@ -35,8 +35,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
 
 /// Converts a pointer to a context back to a Box<Context>.
 fn ptr_to_context(context_ptr: jlong) -> Box<Context> {
-    let context = unsafe { Box::from_raw(context_ptr as *mut Context) };
-    context
+    unsafe { Box::from_raw(context_ptr as *mut Context) }
 }
 
 fn context_to_ptr(context: Box<Context>) -> jlong {
@@ -100,7 +99,7 @@ pub(crate) fn handle_exception(e: Error, ctx: &rquickjs::Ctx<'_>, _env: &mut JNI
             } else if let Some(msg) = catch.as_string() {
                 msg.to_string().unwrap()
             } else {
-                format!("Unknown type of JS Error::Exception")
+                "Unknown type of JS Error::Exception".to_string()
             }
         }
         _ => e.to_string(),
@@ -126,7 +125,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
         .into();
     let value = ProxiedJavaValue::from_object(&mut _env, &_obj, value);
 
-    let _r = context.with(|ctx| {
+    context.with(|ctx| {
         let globals = ctx.globals();
         let s = globals.set(&key_string, value);
 
@@ -188,13 +187,13 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
 
     let r = context.with(move |ctx| {
         let globals = ctx.globals();
-        let f: Result<rquickjs::Value, _> = if function_name.contains(".") {
-            let parts = function_name.split(".").collect::<Vec<&str>>();
+        let f: Result<rquickjs::Value, _> = if function_name.contains('.') {
+            let parts = function_name.split('.').collect::<Vec<&str>>();
 
             let mut target = globals;
             let function_name = parts.last().unwrap();
-            for i in 0..parts.len() - 1 {
-                let s: Result<Value, _> = target.get(parts[i]);
+            for part in parts.iter().take(parts.len() - 1) {
+                let s: Result<Value, _> = target.get(*part);
                 target = match s {
                     Ok(s) => {
                         if s.is_object() {
@@ -202,7 +201,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
                         } else {
                             _env.throw_new(
                                 "java/lang/Exception",
-                                format!("{} is not an object", parts[i]),
+                                format!("{} is not an object", part),
                             )
                             .unwrap();
                             return JObject::null();

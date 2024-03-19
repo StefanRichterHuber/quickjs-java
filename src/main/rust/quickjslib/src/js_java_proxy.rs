@@ -32,10 +32,10 @@ impl<'js, 'vm> JSJavaProxy<'js> {
     ) -> Option<JObject<'vm>> {
         if self.value.is_null() {
             debug!("Map JS null to Java null");
-            return Some(JObject::null());
+            Some(JObject::null())
         } else if self.value.is_undefined() {
             debug!("Map JS undefined to Java null");
-            return Some(JObject::null());
+            Some(JObject::null())
         } else if self.value.is_array() {
             debug!("Map JS array to Java java.util.ArrayList",);
             let array = self.value.as_array().unwrap();
@@ -69,7 +69,7 @@ impl<'js, 'vm> JSJavaProxy<'js> {
                 }
             }
 
-            return Some(list);
+            Some(list)
         } else if self.value.is_function() {
             let f = self.value.as_function().unwrap();
             let f = f.clone();

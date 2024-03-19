@@ -22,12 +22,12 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSFunctio
     drop(runtime);
 }
 
-/// Converts a pointer to a function back to a Box<Function>.
+/// Converts a raw pointer to a function back to a Box<Function>.
 pub(crate) fn ptr_to_function(fun_ptr: jlong) -> Box<Function<'static>> {
-    let runtime = unsafe { Box::from_raw(fun_ptr as *mut Function) };
-    runtime
+    unsafe { Box::from_raw(fun_ptr as *mut Function) }
 }
 
+/// Converts a Box<Function> to a raw pointer.
 pub(crate) fn function_to_ptr(fun: Box<Function>) -> jlong {
     Box::into_raw(fun) as jlong
 }
@@ -55,7 +55,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSFunctio
 
     let func = ptr_to_function(runtime_ptr);
     debug!("Called QuickJSFunction with id {}", runtime_ptr);
-    let result = invoke_js_function_with_java_parameters(_env, &context, &*func, _values);
+    let result = invoke_js_function_with_java_parameters(_env, &context, &func, _values);
 
     // Prevents dropping the function
     _ = function_to_ptr(func);
@@ -77,7 +77,7 @@ pub(crate) fn invoke_js_function_with_java_parameters<'a>(
         let mut args = Vec::with_capacity(args_len as usize);
         for i in 0..args_len {
             let arg = env.get_object_array_element(&parameters, i).unwrap();
-            let arg_js = java_js_proxy::ProxiedJavaValue::from_object(&mut env, &context, arg);
+            let arg_js = java_js_proxy::ProxiedJavaValue::from_object(&mut env, context, arg);
             args.push(arg_js);
         }
 
@@ -92,7 +92,7 @@ pub(crate) fn invoke_js_function_with_java_parameters<'a>(
     };
 
     let result = match s {
-        Ok(s) => s.into_jobject(&context, &mut env).unwrap(),
+        Ok(s) => s.into_jobject(context, &mut env).unwrap(),
         Err(e) => {
             context::handle_exception(e, ctx, &mut env);
             JObject::null()

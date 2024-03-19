@@ -1,2 +1,4 @@
 target/
 src/main/rust/target/
+pom.xml.releaseBackup
+release.properties

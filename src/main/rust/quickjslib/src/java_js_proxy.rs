@@ -91,21 +91,21 @@ impl<'js, P> IntoJsFunc<'js, P> for VariadicFunction {
 
 /// This the intermediate value when converting a Java to a JS value.
 pub enum ProxiedJavaValue {
-    THROWABLE(String),
-    NULL,
-    STRING(String),
-    DOUBLE(f64),
-    INT(i32),
-    BOOL(bool),
-    BIGDECIMAL(String),
-    BIGINTEGER(i64),
-    FUNCTION(Box<dyn Fn(Value<'_>) -> ProxiedJavaValue>),
-    VARFUNCTION(VariadicFunction),
-    BIFUNCTION(Box<dyn Fn(Value<'_>, Value<'_>) -> ProxiedJavaValue>),
-    SUPPLIER(Box<dyn Fn() -> ProxiedJavaValue>),
-    MAP(Vec<(String, ProxiedJavaValue)>),
-    JSFUNCTION(i64),
-    ARRAY(Vec<ProxiedJavaValue>),
+    Throwable(String),
+    Null,
+    String(String),
+    Double(f64),
+    Int(i32),
+    Bool(bool),
+    BigDecimal(String),
+    BigInteger(i64),
+    Function(Box<dyn Fn(Value<'_>) -> ProxiedJavaValue>),
+    VarFunction(VariadicFunction),
+    BiFunction(Box<dyn Fn(Value<'_>, Value<'_>) -> ProxiedJavaValue>),
+    Supplier(Box<dyn Fn() -> ProxiedJavaValue>),
+    Map(Vec<(String, ProxiedJavaValue)>),
+    JSFunction(i64),
+    Array(Vec<ProxiedJavaValue>),
 }
 
 impl ProxiedJavaValue {
@@ -113,11 +113,7 @@ impl ProxiedJavaValue {
         let class_obj = env.find_class(class);
 
         match class_obj {
-            Ok(class_obj) => {
-                let is_instance = env.is_instance_of(obj, class_obj).unwrap();
-                // is_instance.unwrap_or(false)
-                is_instance
-            }
+            Ok(class_obj) => env.is_instance_of(obj, class_obj).unwrap_or(false),
             Err(_) => {
                 // Failing to find class causes an exception -> clear it
                 // env.exception_describe().unwrap();
@@ -150,13 +146,13 @@ impl ProxiedJavaValue {
 
         warn!("{}", error_msg);
 
-        ProxiedJavaValue::THROWABLE(error_msg)
+        ProxiedJavaValue::Throwable(error_msg)
     }
 
     /// Converts a Java null into a JS null
     pub fn from_null() -> Self {
         debug!("Map Java null to JS null");
-        ProxiedJavaValue::NULL
+        ProxiedJavaValue::Null
     }
 
     /// Converts a Java Object array into a js array
@@ -179,8 +175,7 @@ impl ProxiedJavaValue {
                 let value = ProxiedJavaValue::from_object(env, context, element);
                 items.push(value);
             }
-
-            return ProxiedJavaValue::ARRAY(items);
+            ProxiedJavaValue::Array(items)
         }
     }
 
@@ -204,7 +199,7 @@ impl ProxiedJavaValue {
             Box::new(|env, context, value| ProxiedJavaValue::from_object(env, context, value)),
         );
 
-        return ProxiedJavaValue::ARRAY(items);
+        ProxiedJavaValue::Array(items)
     }
 
     /// Unwraps a QuickJSFunction back to a javascript function
@@ -213,7 +208,7 @@ impl ProxiedJavaValue {
 
         let ptr_result = env.get_field(&obj, "ptr", "J");
         let ptr = ptr_result.unwrap().j().unwrap();
-        ProxiedJavaValue::JSFUNCTION(ptr)
+        ProxiedJavaValue::JSFunction(ptr)
     }
 
     /// Wraps a com.github.stefanrichterhuber.quickjs.VariadicFunction into a JS function
@@ -229,7 +224,7 @@ impl ProxiedJavaValue {
         debug!(
             "Create JS function from Java com.github.stefanrichterhuber.quickjs.VariadicFunction"
         );
-        ProxiedJavaValue::VARFUNCTION(VariadicFunction::new(target, context, vm))
+        ProxiedJavaValue::VarFunction(VariadicFunction::new(target, context, vm))
     }
 
     /// Wraps a java.util.function.BiConsumer into a JS function
@@ -276,7 +271,7 @@ impl ProxiedJavaValue {
             result
         };
         debug!("Create JS function from Java BiConsumer<Object, Object>",);
-        ProxiedJavaValue::BIFUNCTION(Box::new(f))
+        ProxiedJavaValue::BiFunction(Box::new(f))
     }
 
     /// Wraps a java.util.function.Consumer into a JS function
@@ -316,7 +311,7 @@ impl ProxiedJavaValue {
             result
         };
         debug!("Create JS function from Java Consumer<Object>",);
-        ProxiedJavaValue::FUNCTION(Box::new(f))
+        ProxiedJavaValue::Function(Box::new(f))
     }
 
     /// Wraps a java.util.function.Supplier into a JS function
@@ -348,7 +343,7 @@ impl ProxiedJavaValue {
             result
         };
         debug!("Create JS function from Java Supplier<Object>",);
-        ProxiedJavaValue::SUPPLIER(Box::new(f))
+        ProxiedJavaValue::Supplier(Box::new(f))
     }
 
     /// Wraps a java.util.function.Function into a JS function
@@ -387,7 +382,7 @@ impl ProxiedJavaValue {
             result
         };
         debug!("Create JS function from Java Function<Object, Object>",);
-        ProxiedJavaValue::FUNCTION(Box::new(f))
+        ProxiedJavaValue::Function(Box::new(f))
     }
 
     /// Wraps a java.util.function.BiFunction into a JS function
@@ -432,7 +427,7 @@ impl ProxiedJavaValue {
             result
         };
         debug!("Create JS function from Java BiFunction<Object, Object, Object>",);
-        ProxiedJavaValue::BIFUNCTION(Box::new(f))
+        ProxiedJavaValue::BiFunction(Box::new(f))
     }
 
     /// Converts a Map entry into a pair of String and ProxiedJavaValue
@@ -506,7 +501,7 @@ impl ProxiedJavaValue {
             Box::new(|env, context, entry| ProxiedJavaValue::from_map_entry(env, context, entry)),
         );
 
-        ProxiedJavaValue::MAP(items)
+        ProxiedJavaValue::Map(items)
     }
 
     /// Converts a Java object to a ProxiedJavaValue. This is achieved by checking the plain Java Object with `instance of` checks for its real type, then extract all the values to a ProxiedJavaValue.
@@ -518,7 +513,7 @@ impl ProxiedJavaValue {
     ) -> Self {
         if obj.is_null() {
             debug!("Map Java null to JS null");
-            return ProxiedJavaValue::NULL;
+            return ProxiedJavaValue::Null;
         }
 
         // To minimize the number of calls into the JVM, the checks are roughly ordered with probability of being used (so first simple values, then collections, then functions, then not-well-supported values, then fallback)
@@ -526,24 +521,24 @@ impl ProxiedJavaValue {
             let raw_value = env.call_method(&obj, "booleanValue", "()Z", &[]);
             let value = raw_value.unwrap().z().unwrap();
             debug!("Map Java Boolean to JS bool");
-            ProxiedJavaValue::BOOL(value)
+            ProxiedJavaValue::Bool(value)
         } else if ProxiedJavaValue::is_instance_of("java/lang/Integer", env, &obj) {
             let raw_value = env.call_method(&obj, "intValue", "()I", &[]);
             let value = raw_value.unwrap().i().unwrap();
             debug!("Map Java Integer to JS int");
-            ProxiedJavaValue::INT(value)
+            ProxiedJavaValue::Int(value)
         } else if ProxiedJavaValue::is_instance_of("java/lang/String", env, &obj) {
             let str: JString = obj.into();
             let plain: String = env.get_string(&str).unwrap().into();
             debug!("Map Java String to JS String");
-            ProxiedJavaValue::STRING(plain)
+            ProxiedJavaValue::String(plain)
         } else if ProxiedJavaValue::is_instance_of("java/lang/Double", env, &obj)
             || ProxiedJavaValue::is_instance_of("java/lang/Float", env, &obj)
         {
             let raw_value = env.call_method(&obj, "doubleValue", "()D", &[]);
             let value = raw_value.unwrap().d().unwrap();
             debug!("Map Java Double / Float to JS Double",);
-            ProxiedJavaValue::DOUBLE(value)
+            ProxiedJavaValue::Double(value)
         } else if ProxiedJavaValue::is_instance_of("java/lang/Iterable", env, &obj) {
             ProxiedJavaValue::from_iterable(env, context, obj)
         } else if ProxiedJavaValue::is_instance_of("java/util/Map", env, &obj) {
@@ -580,25 +575,25 @@ impl ProxiedJavaValue {
             let raw_value = env.call_method(&obj, "longValue", "()J", &[]);
             let value = raw_value.unwrap().j().unwrap();
             debug!("Map Java BigInteger to JS BigInteger",);
-            ProxiedJavaValue::BIGINTEGER(value)
+            ProxiedJavaValue::BigInteger(value)
         } else if ProxiedJavaValue::is_instance_of("java/math/BigDecimal", env, &obj) {
             // Convert big decimal to string -> later on bag to JS big decimal
             let raw_value = env.call_method(&obj, "toString", "()Ljava/lang/String;", &[]);
             let str: JString = raw_value.unwrap().l().unwrap().into();
             let plain: String = env.get_string(&str).unwrap().into();
             debug!("Map Java BigDecimal to JS BigDecimal",);
-            ProxiedJavaValue::BIGDECIMAL(plain)
+            ProxiedJavaValue::BigDecimal(plain)
         } else if ProxiedJavaValue::is_instance_of("java/lang/Long", env, &obj) {
             let raw_value = env.call_method(&obj, "longValue", "()J", &[]);
             let value = raw_value.unwrap().j().unwrap();
             debug!("Map Java Long to JS BigInteger");
-            ProxiedJavaValue::BIGINTEGER(value)
+            ProxiedJavaValue::BigInteger(value)
         } else {
             let raw_value = env.call_method(&obj, "toString", "()Ljava/lang/String;", &[]);
             let str: JString = raw_value.unwrap().l().unwrap().into();
             let plain: String = env.get_string(&str).unwrap().into();
             debug!("Map unsupported Java type to JS by calling toString()",);
-            ProxiedJavaValue::STRING(plain)
+            ProxiedJavaValue::String(plain)
         }
     }
 }
@@ -607,46 +602,46 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
     /// Converts a ProxiedJavaValue into a JS value within the given JS context.
     fn into_js(self, ctx: &rquickjs::Ctx<'js>) -> rquickjs::Result<Value<'js>> {
         let result = match self {
-            ProxiedJavaValue::THROWABLE(msg) => {
+            ProxiedJavaValue::Throwable(msg) => {
                 let exception = Exception::from_message(ctx.clone(), &msg).unwrap();
 
                 let v = Value::from_exception(exception);
                 Err(ctx.throw(v))
             }
-            ProxiedJavaValue::NULL => Ok(Value::new_null(ctx.clone())),
-            ProxiedJavaValue::STRING(str) => Ok(Value::from_string(
+            ProxiedJavaValue::Null => Ok(Value::new_null(ctx.clone())),
+            ProxiedJavaValue::String(str) => Ok(Value::from_string(
                 rquickjs::String::from_str(ctx.clone(), str.as_str()).unwrap(),
             )),
-            ProxiedJavaValue::DOUBLE(v) => Ok(Value::new_float(ctx.clone(), v)),
-            ProxiedJavaValue::INT(v) => Ok(Value::new_int(ctx.clone(), v)),
-            ProxiedJavaValue::BOOL(v) => Ok(Value::new_bool(ctx.clone(), v)),
-            ProxiedJavaValue::BIGDECIMAL(str) => {
+            ProxiedJavaValue::Double(v) => Ok(Value::new_float(ctx.clone(), v)),
+            ProxiedJavaValue::Int(v) => Ok(Value::new_int(ctx.clone(), v)),
+            ProxiedJavaValue::Bool(v) => Ok(Value::new_bool(ctx.clone(), v)),
+            ProxiedJavaValue::BigDecimal(str) => {
                 // FIXME BigDecimal currently not supported by rquickjs
                 let s: rquickjs::Result<Value> = ctx.eval(format!("{}m", str));
                 s
             }
-            ProxiedJavaValue::BIGINTEGER(v) => {
+            ProxiedJavaValue::BigInteger(v) => {
                 // FIXME BigInteger currently not supported by rquickjs
                 let bi = BigInt::from_i64(ctx.clone(), v).unwrap();
                 let s = Value::from_big_int(bi);
                 Ok(s)
             }
-            ProxiedJavaValue::FUNCTION(f) => {
+            ProxiedJavaValue::Function(f) => {
                 let func = Function::new(ctx.clone(), f).unwrap();
                 let s = Value::from_function(func);
                 Ok(s)
             }
-            ProxiedJavaValue::SUPPLIER(f) => {
+            ProxiedJavaValue::Supplier(f) => {
                 let func = Function::new(ctx.clone(), f).unwrap();
                 let s = Value::from_function(func);
                 Ok(s)
             }
-            ProxiedJavaValue::BIFUNCTION(f) => {
+            ProxiedJavaValue::BiFunction(f) => {
                 let func = Function::new(ctx.clone(), f).unwrap();
                 let s = Value::from_function(func);
                 Ok(s)
             }
-            ProxiedJavaValue::MAP(values) => {
+            ProxiedJavaValue::Map(values) => {
                 let obj = rquickjs::Object::new(ctx.clone()).unwrap();
 
                 for value in values.into_iter() {
@@ -656,7 +651,7 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
                 let s = Value::from_object(obj);
                 Ok(s)
             }
-            ProxiedJavaValue::JSFUNCTION(ptr) => {
+            ProxiedJavaValue::JSFunction(ptr) => {
                 let func = ptr_to_function(ptr);
 
                 let f = func.as_raw();
@@ -667,7 +662,7 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
                 _ = function_to_ptr(func);
                 Ok(s)
             }
-            ProxiedJavaValue::ARRAY(mut values) => {
+            ProxiedJavaValue::Array(mut values) => {
                 let obj = rquickjs::Array::new(ctx.clone()).unwrap();
 
                 for i in 0..values.len() {
@@ -678,7 +673,7 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
 
                 Ok(Value::from_array(obj))
             }
-            ProxiedJavaValue::VARFUNCTION(f) => {
+            ProxiedJavaValue::VarFunction(f) => {
                 let func = Function::new::<JObject, VariadicFunction>(ctx.clone(), f).unwrap();
                 let s = Value::from_function(func);
                 Ok(s)

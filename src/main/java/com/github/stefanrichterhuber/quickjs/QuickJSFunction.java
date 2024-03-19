@@ -13,7 +13,7 @@ import org.apache.logging.log4j.Logger;
  * runtime, but only from the native library, therefore its constructor is
  * package-private.
  */
-public class QuickJSFunction implements VariadicFunction<Object> {
+public final class QuickJSFunction implements VariadicFunction<Object> {
     private static final Logger LOGGER = LogManager.getLogger();
 
     /**
