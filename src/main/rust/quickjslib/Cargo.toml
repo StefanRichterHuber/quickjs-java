@@ -20,6 +20,7 @@ rquickjs = { version = "0.5.1", features = [
     #  "dump-objects",
     #  "dump-read-object",
     #  "dump-bytecode",
+    "bindgen",
 ] }
 jni = { version = "0.21" }
 log = { version = "0.4", features = ["std"] }
