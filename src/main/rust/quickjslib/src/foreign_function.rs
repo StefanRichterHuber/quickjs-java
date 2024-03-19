@@ -3,7 +3,7 @@ use jni::{
     sys::jlong,
     JNIEnv,
 };
-use log::debug;
+use log::trace;
 use rquickjs::{function::Args, Function};
 
 use crate::{context, java_js_proxy, js_java_proxy::JSJavaProxy};
@@ -17,7 +17,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSFunctio
     _obj: JObject<'a>,
     function_ptr: jlong,
 ) {
-    debug!("Closed QuickJSFunction with id {}", function_ptr);
+    trace!("Closed QuickJSFunction with id {}", function_ptr);
     let runtime = ptr_to_function(function_ptr);
     drop(runtime);
 }
@@ -54,7 +54,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSFunctio
         .unwrap();
 
     let func = ptr_to_function(runtime_ptr);
-    debug!("Called QuickJSFunction with id {}", runtime_ptr);
+    trace!("Called QuickJSFunction with id {}", runtime_ptr);
     let result = invoke_js_function_with_java_parameters(_env, &context, &func, _values);
 
     // Prevents dropping the function

@@ -129,7 +129,12 @@ struct JavaLogContext {
 /// Implementation of `log::Log` for JavaLogContext. All log messages are passed to the corresponding java method.
 impl log::Log for JavaLogContext {
     fn enabled(&self, metadata: &log::Metadata) -> bool {
-        metadata.level() <= self.level
+        if metadata.target().starts_with("jni::") {
+            // Tracing from the jni crate itself won't be forwarded to java because it creates an endless loop
+            false
+        } else {
+            metadata.level() <= self.level
+        }
     }
 
     fn log(&self, record: &log::Record) {
