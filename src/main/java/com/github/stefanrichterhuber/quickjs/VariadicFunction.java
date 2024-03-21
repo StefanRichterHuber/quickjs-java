@@ -11,7 +11,7 @@ import java.util.function.Function;
  * access.
  */
 @FunctionalInterface
-public interface VariadicFunction<R> extends Function<Object[], R> {
+public interface VariadicFunction<R> {
     /**
      * Applies this function to the given arguments.
      *

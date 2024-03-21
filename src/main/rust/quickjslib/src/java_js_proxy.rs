@@ -13,13 +13,17 @@ use rquickjs::{BigInt, Exception, FromJs, Function, IntoJs, Value};
 use crate::foreign_function::{function_to_ptr, ptr_to_function};
 use crate::js_java_proxy::JSJavaProxy;
 
+/// Type for the function called with the iterator_collect method
+///
+type ForEachFn<'vm, T> = Box<dyn Fn(&mut JNIEnv<'vm>, &JObject<'vm>, JObject<'vm>) -> T + 'vm>;
+
+/// JS Wrapper for com.github.stefanrichterhuber.quickjs.VariadicFunction
 pub struct VariadicFunction {
     target: Rc<GlobalRef>,
     context: Rc<GlobalRef>,
     vm: jni::JavaVM,
 }
 
-/// JS Wrapper for com.github.stefanrichterhuber.quickjs.VariadicFunction
 impl VariadicFunction {
     /// Creates a new VariadicFunction with the necessary references to the function object itself, the global java QuickJSContet and the vm object.
     /// * `target` - A java object of type com.github.stefanrichterhuber.quickjs.VariadicFunction
@@ -455,7 +459,7 @@ impl ProxiedJavaValue {
         env: &mut JNIEnv<'vm>,
         context: &JObject<'vm>,
         iterator: JObject<'vm>,
-        for_each: Box<dyn Fn(&mut JNIEnv<'vm>, &JObject<'vm>, JObject<'vm>) -> T + 'vm>,
+        for_each: ForEachFn<'vm, T>,
     ) -> Vec<T> {
         // Result of the operation -> a list of key-value pairs
         let mut items: Vec<T> = vec![];
@@ -715,7 +719,7 @@ mod tests {
         }
     }
 
-    fn launch_vm<'vm>() -> JavaVM {
+    fn launch_vm() -> JavaVM {
         // Build the VM properties
         let jvm_args = InitArgsBuilder::new()
             // Pass the JNI API version (default is 8)

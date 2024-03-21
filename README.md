@@ -17,13 +17,16 @@ On the other hand, this library requires a native library to be build, which add
 
 ## Build
 
-You need Java 21 and Rust with cargo to build this project. The `rust-maven-plugin` is used to trigger rust build from maven, so a single
+You need Java 21 and Rust with `cargo` and [`cross`](https://github.com/cross-rs/cross) to build this project. So a simple `mvn clean install` is enough to build and test the whole library. Initial build takes some while because for each target platform a Docker image has to be downloaded.
 
-```cli
-mvn clean install
-```
+The `exec-maven-plugin` is used to start the cross build of the native library for several different platforms and afterwards the created library files are copied together using `maven-resources-plugin`. With the file `src/main/rust/quickjslib/Cross.toml` cross is configured for different platforms. Especially a recent version `libclang` is necessary to use Rust `bindgen` to generate the platform-specific bindings to QuickJS within `cross`. Therefore one has to add new platforms to `src/main/rust/quickjslib/Cross.toml` and add a new execution to both the `exec-maven-plugin` and the `maven-resources-plugin`.
 
-is enough to build and test the whole library.
+Currently supported platforms for the native library:
+
+- `aarch64-unknown-linux-gnu`: Linux ARM 64-Bit
+- `x86_64-unknown-linux-gnu`:  Linux x86 64-Bit
+- `armv7-unknown-linux-gnueabihf`: Linux ARM-32-Bit
+- `x86_64-pc-windows-gnu`: Windows x86 64-Bit
 
 ## How to use
 
@@ -112,8 +115,8 @@ This library uses log4j2 for logging on the java side and the `log` crate on the
 - [ ] Add support for BigInteger and BigDecimal. Requires support from rquickjs library.
 - [x] Allow the user to stop script running too long
 - [ ] Fix issues around float values ( e.g. `eval("2.37")` results in an int `2`)
-- [ ] Support cross-build of native library in maven, so multiple arches are supported out-of-the box.
-- [x] Fix issues with forwarding log messages from native to Java runtime at `trace` level. It results in an infinite loop, because JNI also logs at `trace` level.
+- [x] Support cross-build of native library in maven, so multiple arches are supported out-of-the box.
+.
 
 ## Architecture
 
@@ -125,3 +128,9 @@ The project consists of three layers:
 
 "Classic" Java JNI was preferred over the newer "Foreign Function and Memory API", since the native library is only planned to be used with Java so it could be tailored to its use. This allows more direct Rust - Java interactions like easily calling Java methods on objects or even create new Java objects using their constructor. A "Foreign Function an Memory API" approach would have resulted in a thinner native layer with far higher implementation effort on the Java side for all the type conversion, especially sacrificing the type and lifetime safety the current rust layer provides for the QuickJS runtime.
 There are, however, a few unsafe hacks within the native layer, since the lifetime of the QuickJS runtime, context and an exported functions is not managed by the native Rust layer but by the Java runtime (therefore all of them implementing `java.lang.AutoClosable`), which requires conversion of boxed objects to raw pointers and back. A `java.lang.ref.Cleaner` is used in the `QuickJSRuntime` to ensure a cleanup if the runtime gets garbage collected without proper closing the runtime and dependent resources (contexts and functions).
+
+## License
+
+Licensed under either of
+
+- MIT License ([LICENSE](LICENSE) or <http://opensource.org/licenses/MIT>)

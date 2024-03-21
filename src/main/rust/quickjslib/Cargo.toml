@@ -34,4 +34,3 @@ lazy_static = { git = "https://github.com/rust-lang-nursery/lazy-static.rs", bra
 [dev-dependencies]
 # Invocation feature is necessary for tests to spin up a VM
 jni = { version = "0.21", features = ["invocation"] }
-simple_logger = "4.3.3"
