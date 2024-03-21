@@ -16,9 +16,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.source>21</maven.compiler.source>
     <maven.compiler.target>21</maven.compiler.target>
-    <!-- If true, build rust library as release build. Use mvn -Drust.release=false clean install to
-    build faster during development-->
-    <rust.release>true</rust.release>
+    <cargo.profile>release</cargo.profile>
   </properties>
 
   <scm>
@@ -38,7 +36,7 @@
 
 
   <dependencies>
-    <!-- To locate platform specific library -->
+    <!-- Tool used to locate and load platform specific native library -->
     <dependency>
       <groupId>org.questdb</groupId>
       <artifactId>jar-jni</artifactId>
@@ -81,27 +79,213 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.2.5</version>
       </plugin>
+
       <plugin>
-        <groupId>org.questdb</groupId>
-        <artifactId>rust-maven-plugin</artifactId>
-        <version>1.1.1</version>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.2.0</version>
+
         <executions>
+          <!-- Ensure cross is installed, our build tool for building the lib for multiple
+          platforms-->
           <execution>
-            <id>rust-build-x64</id>
-            <phase>compile</phase>
+            <id>install-cross</id>
             <goals>
-              <goal>build</goal>
+              <goal>exec</goal>
             </goals>
+            <phase>validate</phase>
             <configuration>
-              <path>src/main/rust/quickjslib</path>
-              <!-- Copy directly to the project classes -->
-              <copyTo>${project.build.directory}/classes/com/github/stefanrichterhuber/quickjs/libs</copyTo>
-              <copyWithPlatformDir>true</copyWithPlatformDir>
-              <release>${rust.release}</release>
+              <executable>cargo</executable>
+              <workingDirectory>${project.basedir}/src/main/rust/quickjslib</workingDirectory>
+              <arguments>
+                <argument>install</argument>
+                <argument>cross</argument>
+                <argument>--git</argument>
+                <argument>https://github.com/cross-rs/cross</argument>
+              </arguments>
+            </configuration>
+          </execution>
+
+          <!-- Build the library for multiple platforms, one after the other using cross. The
+          respectice target has to be preconfigured in the Cross.toml -->
+          <execution>
+            <id>build linux x86 64 bit</id>
+            <goals>
+              <goal>exec</goal>
+            </goals>
+            <phase>compile</phase>
+            <configuration>
+              <executable>cross</executable>
+              <workingDirectory>${project.basedir}/src/main/rust/quickjslib</workingDirectory>
+              <arguments>
+                <argument>build</argument>
+                <argument>--profile</argument>
+                <argument>${cargo.profile}</argument>
+                <argument>--target</argument>
+                <argument>x86_64-unknown-linux-gnu</argument>
+                <argument>--target-dir</argument>
+                <argument>${project.build.directory}/rust</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>build linux armv7</id>
+            <goals>
+              <goal>exec</goal>
+            </goals>
+            <phase>compile</phase>
+            <configuration>
+              <executable>cross</executable>
+              <workingDirectory>${project.basedir}/src/main/rust/quickjslib</workingDirectory>
+              <arguments>
+                <argument>build</argument>
+                <argument>--profile</argument>
+                <argument>${cargo.profile}</argument>
+                <argument>--target</argument>
+                <argument>armv7-unknown-linux-gnueabihf</argument>
+                <argument>--target-dir</argument>
+                <argument>${project.build.directory}/rust</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>build linux arm64</id>
+            <goals>
+              <goal>exec</goal>
+            </goals>
+            <phase>compile</phase>
+            <configuration>
+              <executable>cross</executable>
+              <workingDirectory>${project.basedir}/src/main/rust/quickjslib</workingDirectory>
+              <arguments>
+                <argument>build</argument>
+                <argument>--profile</argument>
+                <argument>${cargo.profile}</argument>
+                <argument>--target</argument>
+                <argument>aarch64-unknown-linux-gnu</argument>
+                <argument>--target-dir</argument>
+                <argument>${project.build.directory}/rust</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>build windows x86 64 bit</id>
+            <goals>
+              <goal>exec</goal>
+            </goals>
+            <phase>compile</phase>
+            <configuration>
+              <executable>cross</executable>
+              <workingDirectory>${project.basedir}/src/main/rust/quickjslib</workingDirectory>
+              <arguments>
+                <argument>build</argument>
+                <argument>--profile</argument>
+                <argument>${cargo.profile}</argument>
+                <argument>--target</argument>
+                <argument>x86_64-pc-windows-gnu</argument>
+                <argument>--target-dir</argument>
+                <argument>${project.build.directory}/rust</argument>
+              </arguments>
             </configuration>
           </execution>
         </executions>
       </plugin>
+
+      <plugin>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.3.1</version>
+        <executions>
+
+          <!-- Copy the libraries build to the libs folder within the classes, in a folder matching
+          the JNA convention to find the suitable library for a target-->
+          <execution>
+            <id>copy-lib-linux-x86-64</id>
+            <phase>compile</phase>
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>
+                ${project.build.directory}/classes/com/github/stefanrichterhuber/quickjs/libs/linux-x86-64</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>
+                    ${project.build.directory}/rust/x86_64-unknown-linux-gnu/${cargo.profile}</directory>
+                  <filtering>false</filtering>
+                  <includes>
+                    <include>*.so</include>
+                  </includes>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+          <execution>
+            <id>copy-lib-linux-armv7</id>
+            <phase>compile</phase>
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>
+                ${project.build.directory}/classes/com/github/stefanrichterhuber/quickjs/libs/linux-armv7</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>
+                    ${project.build.directory}/rust/armv7-unknown-linux-gnueabihf/${cargo.profile}</directory>
+                  <filtering>false</filtering>
+                  <includes>
+                    <include>*.so</include>
+                  </includes>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+          <execution>
+            <id>copy-lib-linux-aarch64</id>
+            <phase>compile</phase>
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>
+                ${project.build.directory}/classes/com/github/stefanrichterhuber/quickjs/libs/linux-aarch64</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>
+                    ${project.build.directory}/rust/aarch64-unknown-linux-gnu/${cargo.profile}</directory>
+                  <filtering>false</filtering>
+                  <includes>
+                    <include>*.so</include>
+                  </includes>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+          <execution>
+            <id>copy-lib-linux-win64</id>
+            <phase>compile</phase>
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>
+                ${project.build.directory}/classes/com/github/stefanrichterhuber/quickjs/libs/win32-x86-64</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>
+                    ${project.build.directory}/rust/x86_64-pc-windows-gnu/${cargo.profile}</directory>
+                  <filtering>false</filtering>
+                  <includes>
+                    <include>*.dll</include>
+                  </includes>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+
+        </executions>
+      </plugin>
+
       <plugin>
         <groupId>com.github.spotbugs</groupId>
         <artifactId>spotbugs-maven-plugin</artifactId>
