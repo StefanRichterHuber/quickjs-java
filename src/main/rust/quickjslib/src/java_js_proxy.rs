@@ -96,7 +96,7 @@ impl<'js, P> IntoJsFunc<'js, P> for VariadicFunction {
 
 /// This the intermediate value when converting a Java to a JS value.
 pub enum ProxiedJavaValue {
-    Throwable(String),
+    Throwable(String, String, String, i32),
     Null,
     String(String),
     Double(f64),
@@ -147,11 +147,72 @@ impl ProxiedJavaValue {
         let str: JString = message.unwrap().l().unwrap().into();
         let error_msg: String = env.get_string(&str).unwrap().into();
 
-        trace!("Map Java exception to JS exception",);
+        // Get type of exception
+        // e.getClass().getName();
+        let exception_class = env
+            .call_method(&throwable, "getClass", "()Ljava/lang/Class;", &[])
+            .unwrap()
+            .l()
+            .unwrap();
+        let class_name: JString = env
+            .call_method(&exception_class, "getName", "()Ljava/lang/String;", &[])
+            .unwrap()
+            .l()
+            .unwrap()
+            .into();
+        let class_name: String = env.get_string(&class_name).unwrap().into();
 
-        warn!("{}", error_msg);
+        // Get line number and file name for a more detailed exception
+        // e.getStackTrace()[0].getLineNumber();
+        // e.getStackTrace()[0].getFileName();
+        let stack_trace: JObjectArray<'vm> = env
+            .call_method(
+                &throwable,
+                "getStackTrace",
+                "()[Ljava/lang/StackTraceElement;",
+                &[],
+            )
+            .unwrap()
+            .l()
+            .unwrap()
+            .into();
 
-        ProxiedJavaValue::Throwable(error_msg)
+        if !env.is_same_object(JObject::null(), &stack_trace).unwrap()
+            && env.get_array_length(&stack_trace).unwrap() > 0
+        {
+            let first_trace_element = env.get_object_array_element(&stack_trace, 0).unwrap();
+            let line_number = env
+                .call_method(&first_trace_element, "getLineNumber", "()I", &[])
+                .unwrap()
+                .i()
+                .unwrap();
+            let file: JString = env
+                .call_method(
+                    &first_trace_element,
+                    "getFileName",
+                    "()Ljava/lang/String;",
+                    &[],
+                )
+                .unwrap()
+                .l()
+                .unwrap()
+                .into();
+            let file: String = if file.is_null() {
+                "".to_string()
+            } else {
+                env.get_string(&file).unwrap().into()
+            };
+
+            trace!("Map Java exception to JS exception");
+
+            warn!("{} ({}: {})", error_msg, file, line_number);
+
+            ProxiedJavaValue::Throwable(error_msg, class_name, file, line_number)
+        } else {
+            trace!("Map Java exception to JS exception");
+            warn!("{}", error_msg);
+            ProxiedJavaValue::Throwable(error_msg, class_name, "".to_string(), -1)
+        }
     }
 
     /// Converts a Java null into a JS null
@@ -607,8 +668,18 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
     /// Converts a ProxiedJavaValue into a JS value within the given JS context.
     fn into_js(self, ctx: &rquickjs::Ctx<'js>) -> rquickjs::Result<Value<'js>> {
         let result = match self {
-            ProxiedJavaValue::Throwable(msg) => {
-                let exception = Exception::from_message(ctx.clone(), &msg).unwrap();
+            ProxiedJavaValue::Throwable(msg, class_name, file, line) => {
+                let exception = if !file.is_empty() {
+                    Exception::from_message_location(ctx.clone(), &msg, &file, line).unwrap()
+                } else {
+                    Exception::from_message(ctx.clone(), &msg).unwrap()
+                };
+                exception
+                    .set("original_java_exception_class", class_name)
+                    .unwrap();
+
+                exception.set("original_java_exception_line", line).unwrap();
+                exception.set("original_java_exception_file", file).unwrap();
 
                 let v = Value::from_exception(exception);
                 Err(ctx.throw(v))

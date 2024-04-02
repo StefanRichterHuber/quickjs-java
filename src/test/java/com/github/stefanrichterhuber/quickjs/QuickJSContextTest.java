@@ -1,6 +1,7 @@
 package com.github.stefanrichterhuber.quickjs;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -20,6 +21,7 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 public class QuickJSContextTest {
+
     /**
      * Add and retrieve simple values from the JS context
      * 
@@ -63,6 +65,47 @@ public class QuickJSContextTest {
                 Object v = context.getGlobal("e");
                 assertInstanceOf(Boolean.class, v);
                 assertEquals(true, v);
+            }
+        }
+    }
+
+    /**
+     * JS eval can return values of all supported types
+     * 
+     * @throws Exception
+     */
+    @Test
+    public void getResultFromEval() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+            // Get double from eval
+            {
+                Object v = context.eval("2.74");
+                assertInstanceOf(Double.class, v);
+                assertEquals(2.74d, (Double) v, 0.001d);
+            }
+            // Get int from eval
+            {
+                Object v = context.eval("2");
+                assertInstanceOf(Integer.class, v);
+                assertEquals(2, (Integer) v);
+            }
+            // Get String from eval
+            {
+                Object v = context.eval("'2'");
+                assertInstanceOf(String.class, v);
+                assertEquals("2", (String) v);
+            }
+            // Get Boolean from eval
+            {
+                Object v = context.eval("true");
+                assertInstanceOf(Boolean.class, v);
+                assertTrue((Boolean) v);
+            }
+            {
+                Object v = context.eval("false");
+                assertInstanceOf(Boolean.class, v);
+                assertFalse((Boolean) v);
             }
         }
     }
@@ -137,6 +180,27 @@ public class QuickJSContextTest {
             });
 
             assertEquals("Hello World", context.eval("a('Hello',' ', 'World')"));
+        }
+    }
+
+    /**
+     * JS Exceptions are mapped to QuickJSScriptException
+     * 
+     * @throws Exception
+     */
+    @Test
+    public void exceptionTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            context.eval("\n\nthrow new Error('Things happened')");
+            fail("Should not reach this point");
+        } catch (Exception e) {
+            assertInstanceOf(QuickJSScriptException.class, e);
+            assertEquals("Things happened", e.getMessage());
+
+            assertEquals(3, ((QuickJSScriptException) e).getLineNumber());
+            assertEquals("<script>", ((QuickJSScriptException) e).getFileName());
         }
     }
 
@@ -259,7 +323,6 @@ public class QuickJSContextTest {
                 QuickJSFunction f = (QuickJSFunction) v;
                 assertEquals("hello", f.apply());
             }
-
         }
     }
 
