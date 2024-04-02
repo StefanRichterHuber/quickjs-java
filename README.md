@@ -11,9 +11,15 @@ There are several (more) mature JavaScript runtimes for Java like
 - [Nashorn](https://github.com/openjdk/nashorn)
 - [GraalVM JS](https://www.graalvm.org/latest/reference-manual/js/), which also runs independently of GraalVM
 
-All of these deeply integrate with the Java runtime and allow full access of JS scripts into the Java runtime. For some applications this might be a security or stability issue. This runtime, on the other hand, only has a very lean interface between Java and Javascript. Scripts can only access the objects explicitly passed into the runtime and have no other access to the outside world. Furthermore hard limits on time and memory consumption of the scripts can be easily set, to limit the impact af malicious or faulty scripts on your applications. This is especially great to implement some calculation or validation scripts, so very small scripts with a small, very well defined scope. Due to the safe nature of this runtime, you can pass writing this scripts to trusted users without compromising the integrity of the rest of your application.
+All of these deeply integrate with the Java runtime and allow full access of JS scripts into the Java runtime. For some applications this might be a security or stability issue. This runtime, on the other hand, only has a very lean interface between Java and Javascript. Scripts can only access the objects explicitly passed into the runtime and have no other access to the outside world. Furthermore hard limits on time and memory consumption of the scripts can be easily set, to limit the impact of malicious or faulty scripts on your applications. This is especially great to implement some calculation or validation scripts, so very small scripts with a small, very well defined scope. Due to the safe nature of this runtime, you can pass writing this scripts to trusted users without compromising the integrity of the rest of your application.
+A main goal of this implementation is to provide a very clean, yet efficient and type-safe interface.
 
 On the other hand, this library requires a native library to be build, which adds some build complexity (requires Rust with cargo).
+
+There are, however, other projects binding QuickJS to the JVM, which might be worth looking at:
+
+- [Quack](https://github.com/koush/quack): "Quack provides Java (Android and desktop) bindings to JavaScript engines."s
+- [QuickJS - KT](https://github.com/dokar3/quickjs-kt): "Run your JavaScript code in Kotlin, asynchronously."
 
 ## Build
 
@@ -105,6 +111,7 @@ All supported Java types can be used as globals, retrieved as globals or used as
 | `java.util.function.BiConsumer<?, ?>`                       | `function`              | parameter could be any of the supported Java types                                                                                                                            |
 | `com.github.stefanrichterhuber.quickjs.VariadicFunction<?>` | `function`              | Java function with an `java.lang.Object` array (variardic parameters) as parameter, a generic solution when other functions don't work. Requires manual casts                 |
 | `com.github.stefanrichterhuber.quickjs.QuickJSFunction`     | `function`              | if js returns a function, its converted to a QuickJSFunction which can be called from Java or added back to the JS context where it will be transformed back to a function    |
+| `java.lang.Exception`                                       | `Exception`             | Java exceptions are mapped to JS exceptions and vice versa to have useful stacktrace between languages. JS exceptions are mapped to `com.github.stefanrichterhuber.quickjs.QuickJSScriptException` |
 
 ### Logging
 
@@ -114,8 +121,9 @@ This library uses log4j2 for logging on the java side and the `log` crate on the
 
 - [ ] Add support for BigInteger and BigDecimal. Requires support from rquickjs library.
 - [x] Allow the user to stop script running too long
-- [ ] Fix issues around float values ( e.g. `eval("2.37")` results in an int `2`)
+- [x] Fix issues around parsing float values ( e.g. `eval("2.37")` results in an int `2`): This was happening due to a design decision in QuickJS, which makes parsing floats locale dependent <https://github.com/bellard/quickjs/issues/106>. A workaround is provided.
 - [x] Support cross-build of native library in maven, so multiple arches are supported out-of-the box.
+- [ ] Implement support for [JSR223 Java Scripting API](https://docs.oracle.com/javase/8/docs/technotes/guides/scripting/prog_guide/api.html)
 .
 
 ## Architecture
@@ -131,6 +139,6 @@ There are, however, a few unsafe hacks within the native layer, since the lifeti
 
 ## License
 
-Licensed under either of
+Licensed under
 
 - MIT License ([LICENSE](LICENSE) or <http://opensource.org/licenses/MIT>)

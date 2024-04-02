@@ -14,6 +14,13 @@ lto = true
 name = "javaquickjs"
 crate-type = ["cdylib"]
 
+[features]
+# Enables a workround, that sets the locale for a js eval /  function invocation. This is necessary due to a bug in QuickJS <https://github.com/bellard/quickjs/issues/106>
+# which makes float parsing dependent on current locale. Starting a JVM sets a locale, so on some systems with ',' as decimal separator (e.g. german systems) parsing float values fails.
+# These values are then recognized as int values (part after the ',' is just discarded) (see <https://github.com/DelSkayn/rquickjs/issues/281>)
+locale_workaround = ["dep:libc"]
+default = ["locale_workaround"]
+
 [dependencies]
 # All this dump-* features help debugging
 rquickjs = { version = "0.5.1", features = [
@@ -25,6 +32,7 @@ rquickjs = { version = "0.5.1", features = [
 jni = { version = "0.21" }
 log = { version = "0.4", features = ["std"] }
 lazy_static = "1.4.0"
+libc = { version = "0.2", optional = true }
 
 [patch.crates-io]
 # Lazy static is required for 'invocation' feature of jni and 'bindgen' feature of rquickjs, but produces some type errors in the latest published verson 1.4 

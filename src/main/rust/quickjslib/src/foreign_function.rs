@@ -6,7 +6,7 @@ use jni::{
 use log::trace;
 use rquickjs::{function::Args, Function};
 
-use crate::{context, java_js_proxy, js_java_proxy::JSJavaProxy};
+use crate::{context, java_js_proxy, js_java_proxy::JSJavaProxy, with_locale};
 
 /// Implementation com.github.stefanrichterhuber.quickjs.QuickJSFunction.closeFunction(long ptr)
 #[no_mangle]
@@ -70,6 +70,7 @@ pub(crate) fn invoke_js_function_with_java_parameters<'a>(
     parameters: JObjectArray<'a>,
 ) -> JObject<'a> {
     let ctx = func.ctx();
+    let locale = with_locale::TemporaryLocale::new_default();
 
     let args_len = env.get_array_length(&parameters).unwrap();
 
@@ -86,15 +87,15 @@ pub(crate) fn invoke_js_function_with_java_parameters<'a>(
         for arg_js in args.into_iter() {
             args_js.push_arg(arg_js).unwrap();
         }
-        func.call_arg(args_js)
+        locale.with(|| func.call_arg(args_js))
     } else {
-        func.call(())
+        locale.with(|| func.call(()))
     };
 
     let result = match s {
         Ok(s) => s.into_jobject(context, &mut env).unwrap(),
         Err(e) => {
-            context::handle_exception(e, ctx, &mut env);
+            context::handle_exception(e, ctx, context, &mut env);
             JObject::null()
         }
     };
