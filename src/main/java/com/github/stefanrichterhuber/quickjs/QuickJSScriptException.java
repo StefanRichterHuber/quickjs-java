@@ -6,7 +6,14 @@ package com.github.stefanrichterhuber.quickjs;
  * tracked.
  */
 public class QuickJSScriptException extends RuntimeException {
+    /**
+     * Name of the file the exception occurred in.
+     */
     private final String fileName;
+
+    /**
+     * Line number the exception occurred in.
+     */
     private final Integer lineNumber;
 
     /**
@@ -40,7 +47,7 @@ public class QuickJSScriptException extends RuntimeException {
      * Since we cannot have a proper stack trace for Exceptions passing through the
      * JS runtime, file name is manually tracked
      * 
-     * @return
+     * @return name of the file
      */
     public String getFileName() {
         return fileName;
@@ -50,7 +57,7 @@ public class QuickJSScriptException extends RuntimeException {
      * Since we cannot have a proper stack trace for Exceptions passing through the
      * JS runtime, line number is manually tracked
      * 
-     * @return
+     * @return line in the file
      */
     public Integer getLineNumber() {
         return lineNumber;

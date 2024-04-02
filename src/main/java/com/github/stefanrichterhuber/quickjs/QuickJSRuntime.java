@@ -192,7 +192,7 @@ public class QuickJSRuntime implements AutoCloseable {
     /**
      * Returns the native pointer to the QuickJSRuntime
      * 
-     * @return
+     * @return Native pointer
      */
     long getRuntimePointer() {
         if (ptr == 0) {
@@ -253,7 +253,7 @@ public class QuickJSRuntime implements AutoCloseable {
     /**
      * Sets the memory limit of javascript execution to the given number of bytes
      * 
-     * @param limit
+     * @param limit Memory limit in bytes
      * @return this QuickJSRuntime instance for method chaining.
      */
     public QuickJSRuntime withMemoryLimit(long limit) {
@@ -264,7 +264,7 @@ public class QuickJSRuntime implements AutoCloseable {
     /**
      * Sets the maximum stack of javascript execution to the given number of bytes
      * 
-     * @param limit
+     * @param limit Stack size limit in bytes
      * @return this QuickJSRuntime instance for method chaining.
      */
     public QuickJSRuntime withMaxStackSize(long size) {

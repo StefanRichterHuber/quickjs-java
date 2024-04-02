@@ -79,6 +79,9 @@ public final class QuickJSUtils {
      * object will be mapped to functions.
      * All method parameters and the return type need to be one of the supported
      * types
+     * 
+     * @param obj Object to create Map of
+     * @return A Map representing the object
      */
     @SuppressWarnings("unchecked")
     public static Map<String, Object> createMapOf(Object obj) {

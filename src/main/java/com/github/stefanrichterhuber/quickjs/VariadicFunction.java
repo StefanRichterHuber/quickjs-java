@@ -9,6 +9,8 @@ import java.util.function.Function;
  * correct number and types of arguments yourself. The signature matches calling
  * function via reflection, however, and is therefore a good fit for generic
  * access.
+ * 
+ * @param R Result type of the function
  */
 @FunctionalInterface
 public interface VariadicFunction<R> {
