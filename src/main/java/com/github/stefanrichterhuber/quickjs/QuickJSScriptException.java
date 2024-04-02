@@ -67,6 +67,6 @@ public class QuickJSScriptException extends RuntimeException {
         if (fileName != null) {
             return String.format("%s (%s)", super.getMessage(), fileName);
         }
-        return super.toString()
+        return super.toString();
     }
 }
