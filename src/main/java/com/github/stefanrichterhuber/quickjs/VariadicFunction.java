@@ -10,7 +10,7 @@ import java.util.function.Function;
  * function via reflection, however, and is therefore a good fit for generic
  * access.
  * 
- * @param R Result type of the function
+ * @param <R> Result type of the function
  */
 @FunctionalInterface
 public interface VariadicFunction<R> {
@@ -35,7 +35,6 @@ public interface VariadicFunction<R> {
      *         applies the {@code after} function
      * @throws NullPointerException if after is null
      *
-     * @see #compose(Function)
      */
     default <V> VariadicFunction<V> andThen(Function<? super R, ? extends V> after) {
         Objects.requireNonNull(after);

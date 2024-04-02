@@ -264,7 +264,7 @@ public class QuickJSRuntime implements AutoCloseable {
     /**
      * Sets the maximum stack of javascript execution to the given number of bytes
      * 
-     * @param limit Stack size limit in bytes
+     * @param size Stack size limit in bytes
      * @return this QuickJSRuntime instance for method chaining.
      */
     public QuickJSRuntime withMaxStackSize(long size) {
