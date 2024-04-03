@@ -17,10 +17,13 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 public class QuickJSContextTest {
+    private static final Logger LOGGER = LogManager.getLogger();
 
     /**
      * Add and retrieve simple values from the JS context
@@ -189,7 +192,7 @@ public class QuickJSContextTest {
      * @throws Exception
      */
     @Test
-    public void exceptionTest() throws Exception {
+    public void jsExceptionTest() throws Exception {
         try (QuickJSRuntime runtime = new QuickJSRuntime();
                 QuickJSContext context = runtime.createContext()) {
 
@@ -201,6 +204,36 @@ public class QuickJSContextTest {
 
             assertEquals(3, ((QuickJSScriptException) e).getLineNumber());
             assertEquals("<script>", ((QuickJSScriptException) e).getFileName());
+        }
+    }
+
+    /**
+     * Java Exceptions are mapped to QuickJSScriptException with correct filename
+     * and line-number, but have the original
+     * java exception as cause. The original stacktrace, however, is lost.
+     * 
+     * @throws Exception
+     */
+    @Test
+    public void javaExceptionTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            Function<String, String> a = v -> {
+                throw new IllegalArgumentException("Things happened");
+            };
+            context.setGlobal("a", a);
+
+            context.eval("a('hello')");
+            fail("Should not reach this point");
+        } catch (Exception e) {
+            assertInstanceOf(QuickJSScriptException.class, e);
+            assertEquals("Things happened", e.getMessage());
+            assertEquals("QuickJSContextTest.java", ((QuickJSScriptException) e).getFileName());
+
+            var cause = e.getCause();
+            assertInstanceOf(IllegalArgumentException.class, cause);
+            assertEquals("Things happened", cause.getMessage());
         }
     }
 
@@ -619,7 +652,7 @@ public class QuickJSContextTest {
 
     public static class TestClass {
         public void call(String name) {
-            System.out.println(name);
+            LOGGER.debug(name);
         }
 
         public String f1(String name) {

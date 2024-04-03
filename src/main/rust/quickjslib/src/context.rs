@@ -11,7 +11,7 @@ use jni::{
 use log::trace;
 use log::{debug, warn};
 use rquickjs::atom::PredefinedAtom;
-use rquickjs::{Coerced, Context, Error, Value};
+use rquickjs::{Context, Error, Value};
 
 // ---------------------- com.github.stefanrichterhuber.quickjs.QuickJSContext
 /// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.createContext(long ptr)
@@ -155,27 +155,32 @@ pub(crate) fn handle_exception<'vm>(
                     })
                     .unwrap_or(JObject::null());
 
-                let original_exception: Result<Coerced<String>, _> =
+                let original_exception: Result<Value, _> =
                     execp.get("original_java_exception_class");
 
                 // First generate the 'cause' parameter for the invocation, if the origin was a java exception
                 let throwable = if let Ok(class_name) = original_exception {
-                    // java.lang.Exception -> java/lang/Exception
-                    let class_name = class_name.replace('.', "/");
-
-                    if let Ok(exception_class) = env.find_class(&class_name) {
-                        let exception_object = env
-                            .new_object(
-                                exception_class,
-                                "(Ljava/lang/String;)V",
-                                &[jni::objects::JValueGen::Object(&message)],
-                            )
-                            .unwrap_or(JObject::null());
-                        exception_object
-                    } else {
-                        env.exception_clear().unwrap();
-                        warn!("Could not find class '{}'", class_name);
+                    if class_name.is_undefined() || class_name.is_null() {
                         JObject::null()
+                    } else {
+                        // java.lang.Exception -> java/lang/Exception
+                        let class_name = class_name.as_string().unwrap().to_string().unwrap();
+                        let class_name = class_name.replace('.', "/");
+
+                        if let Ok(exception_class) = env.find_class(&class_name) {
+                            let exception_object = env
+                                .new_object(
+                                    exception_class,
+                                    "(Ljava/lang/String;)V",
+                                    &[jni::objects::JValueGen::Object(&message)],
+                                )
+                                .unwrap_or(JObject::null());
+                            exception_object
+                        } else {
+                            env.exception_clear().unwrap();
+                            warn!("Could not find class '{}'", class_name);
+                            JObject::null()
+                        }
                     }
                 } else {
                     debug!("JS exception does not originate from a Java Exception");

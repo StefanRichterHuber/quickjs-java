@@ -111,7 +111,7 @@ All supported Java types can be used as globals, retrieved as globals or used as
 | `java.util.function.BiConsumer<?, ?>`                       | `function`              | parameter could be any of the supported Java types                                                                                                                            |
 | `com.github.stefanrichterhuber.quickjs.VariadicFunction<?>` | `function`              | Java function with an `java.lang.Object` array (variardic parameters) as parameter, a generic solution when other functions don't work. Requires manual casts                 |
 | `com.github.stefanrichterhuber.quickjs.QuickJSFunction`     | `function`              | if js returns a function, its converted to a QuickJSFunction which can be called from Java or added back to the JS context where it will be transformed back to a function    |
-| `java.lang.Exception`                                       | `Exception`             | Java exceptions are mapped to JS exceptions and vice versa to have useful stacktrace between languages. JS exceptions are mapped to `com.github.stefanrichterhuber.quickjs.QuickJSScriptException` |
+| `java.lang.Exception`                                       | `Exception`             | Java exceptions are mapped to JS exceptions. JS exceptions are mapped to `com.github.stefanrichterhuber.quickjs.QuickJSScriptException`. File and line-number is preserved, full stacktrace, however, is lost |
 
 ### Logging
 
@@ -139,6 +139,4 @@ There are, however, a few unsafe hacks within the native layer, since the lifeti
 
 ## License
 
-Licensed under
-
-- MIT License ([LICENSE](LICENSE) or <http://opensource.org/licenses/MIT>)
+Licensed under MIT License ([LICENSE](LICENSE) or <http://opensource.org/licenses/MIT>)
