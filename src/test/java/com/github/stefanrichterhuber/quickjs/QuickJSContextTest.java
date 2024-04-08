@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -545,6 +547,23 @@ public class QuickJSContextTest {
                 assertTrue(duration < 1500);
             }
 
+        }
+    }
+
+    /**
+     * One could directly eval direct(!) byte buffers. This allows to transfer of
+     * huge scripts directly into the native context without copy operation.
+     */
+    @Test
+    public void evalByteBufferTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            byte[] script = "3 + 4 + 7".getBytes(StandardCharsets.UTF_8);
+            ByteBuffer bb = ByteBuffer.allocateDirect(script.length).put(script);
+            Object result = context.eval(bb);
+
+            assertEquals(14, result);
         }
     }
 

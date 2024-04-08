@@ -2,6 +2,7 @@ package com.github.stefanrichterhuber.quickjs;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
+import java.nio.ByteBuffer;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
@@ -112,6 +113,15 @@ public class QuickJSContext implements AutoCloseable {
      * @return Result of the script
      */
     private native Object eval(long ptr, String script);
+
+    /**
+     * Executes a JS script in the native layer
+     * 
+     * @param ptr    Native pointer to the QuickJS context
+     * @param script Direct(!) byte buffer containing the script
+     * @return Result of the script
+     */
+    private native Object evalBuffer(long ptr, ByteBuffer script);
 
     /**
      * Invokes a JS function in the native layer
@@ -329,6 +339,30 @@ public class QuickJSContext implements AutoCloseable {
         this.runtime.scriptStarted();
         try {
             final Object result = this.eval(getContextPointer(), script);
+            return result;
+        } finally {
+            this.runtime.scriptFinished();
+        }
+    }
+
+    /**
+     * Evaluates a JavaScript script from a direct(!) ByteBuffer and returns the
+     * result. This is especially useful for huge scripts (loaded with memory-mapped
+     * files)
+     * 
+     * @param script Script to execute, already wrapped into a direct UTF-8 byte
+     *               buffer
+     * @return Result from the script. Will be either null, or of one of the
+     *         supported java types
+     */
+    public Object eval(ByteBuffer script) {
+        if (!script.isDirect()) {
+            throw new IllegalArgumentException("Script byte buffer must be direct!");
+        }
+        this.runtime.scriptStarted();
+        try {
+
+            final Object result = this.evalBuffer(getContextPointer(), script);
             return result;
         } finally {
             this.runtime.scriptFinished();

@@ -1,8 +1,10 @@
+use std::ptr::addr_eq;
+
 use crate::java_js_proxy::ProxiedJavaValue;
 use crate::js_java_proxy::JSJavaProxy;
 use crate::runtime::{ptr_to_runtime, runtime_to_ptr};
 use crate::{foreign_function, with_locale};
-use jni::objects::{JObjectArray, JThrowable};
+use jni::objects::{JByteBuffer, JObjectArray, JThrowable};
 use jni::{
     objects::{JObject, JString},
     sys::jlong,
@@ -268,27 +270,63 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
     context_ptr: jlong,
     script: JString<'a>,
 ) -> JObject<'a> {
-    let context = ptr_to_context(context_ptr);
     let script_string: String = _env
         .get_string(&script)
         .expect("Couldn't get java string!")
         .into();
+    eval(_env, _obj, context_ptr, script_string)
+}
+
+/// Internal common implementation of the script eval
+pub(crate) fn eval<'a, S: Into<Vec<u8>>>(
+    mut env: JNIEnv<'a>,
+    _obj: JObject<'a>,
+    context_ptr: jlong,
+    script: S,
+) -> JObject<'a> {
+    let context = ptr_to_context(context_ptr);
     let locale = with_locale::TemporaryLocale::new_default();
 
-    let r = context.with(move |ctx| {
-        let s: Result<JSJavaProxy, _> = locale.with(|| ctx.eval(script_string));
+    let result = context.with(move |ctx| {
+        let s: Result<JSJavaProxy, _> = locale.with(|| ctx.eval(script));
 
         match s {
-            Ok(s) => s.into_jobject(&_obj, &mut _env).unwrap(),
+            Ok(s) => s.into_jobject(&_obj, &mut env).unwrap(),
             Err(e) => {
-                handle_exception(e, &ctx, &_obj, &mut _env);
+                handle_exception(e, &ctx, &_obj, &mut env);
                 JObject::null()
             }
         }
     });
+
     // Prevents dropping the context
     _ = context_to_ptr(context);
-    r
+
+    result
+}
+
+/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.evalBuffer(long, ByteBuffer)
+#[no_mangle]
+pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext_evalBuffer<'a>(
+    mut _env: JNIEnv<'a>,
+    _obj: JObject<'a>,
+    context_ptr: jlong,
+    script: JObject<'a>,
+) -> JObject<'a> {
+    let byte_buffer = JByteBuffer::from(script);
+    let address = _env.get_direct_buffer_address(&byte_buffer).unwrap();
+
+    let result = if address.is_null() {
+        warn!("script buffer address is null");
+        JObject::null()
+    } else {
+        let byte_buffer_size = _env.get_direct_buffer_capacity(&byte_buffer).unwrap();
+        let script_buf: &mut [u8] =
+            unsafe { core::slice::from_raw_parts_mut(address, byte_buffer_size) };
+
+        eval(_env, _obj, context_ptr, script_buf)
+    };
+    result
 }
 
 /// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.invoke(long, String, Object... args)
