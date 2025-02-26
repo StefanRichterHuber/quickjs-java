@@ -91,6 +91,7 @@ impl TemporaryLocale {
 }
 
 #[cfg(test)]
+#[cfg(all(feature = "locale_workaround", not(target_os = "windows")))]
 mod tests {
     use std::{ffi::CString, mem};
 
