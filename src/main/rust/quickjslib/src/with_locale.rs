@@ -1,6 +1,8 @@
 #[cfg(all(feature = "locale_workaround", not(target_os = "windows")))]
 use std::ffi::CString;
 
+use log::{debug};
+
 /// A temporary locale that can be used to temporarily set the locale for a function invocation. This is necessary due to a bug / design decision in QuickJS <https://github.com/bellard/quickjs/issues/106>
 /// which makes float parsing dependent on current locale. Starting a JVM sets a locale, so on some systems with ',' as decimal separator (e.g. german systems) parsing float values fails.
 /// These values are then recognized as int values (part after the ',' is just discarded) (see <https://github.com/DelSkayn/rquickjs/issues/281>)
@@ -10,7 +12,7 @@ pub struct TemporaryLocale {
     locale: libc::locale_t,
 }
 
-static DEFAULT_LOCALE: &str = "en_US.UTF-8";
+static DEFAULT_LOCALE: &str = "en_US";
 
 impl TemporaryLocale {
     /// Creates a new temporary locale with the suitable default locale to fulfill the workaround.
@@ -30,8 +32,16 @@ impl TemporaryLocale {
     /// Creates a new temporary locale with the given locale (e.g. 'en_US.UTF-8')
     pub fn new(locale: &str) -> Self {
         let locale = CString::new(locale).unwrap();
-        let script_locale =
-            unsafe { libc::newlocale(libc::LC_ALL, locale.as_ptr(), std::ptr::null_mut()) };
+        let script_locale = unsafe {
+            libc::newlocale(libc::LC_NUMERIC_MASK, locale.as_ptr(), std::ptr::null_mut())
+        };
+
+        if script_locale.is_null() {
+            panic!(
+                "Failed to create locale '{}'. Install it with 'sudo locale-gen {}' or similar",
+                locale.to_str().unwrap(),locale.to_str().unwrap(),
+            );
+        }
 
         TemporaryLocale {
             locale: script_locale,
@@ -43,9 +53,11 @@ impl TemporaryLocale {
     where
         F: FnOnce() -> R,
     {
+        debug!("Setting locale temporarily");
         let current_locale = unsafe { libc::uselocale(self.locale) };
         let result = f();
         unsafe { libc::uselocale(current_locale) };
+        debug!("Reset to previous locale");
         result
     }
 }
