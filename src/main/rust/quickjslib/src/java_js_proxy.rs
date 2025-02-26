@@ -669,11 +669,8 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
     fn into_js(self, ctx: &rquickjs::Ctx<'js>) -> rquickjs::Result<Value<'js>> {
         let result = match self {
             ProxiedJavaValue::Throwable(msg, class_name, file, line) => {
-                let exception = if !file.is_empty() {
-                    Exception::from_message_location(ctx.clone(), &msg, &file, line).unwrap()
-                } else {
-                    Exception::from_message(ctx.clone(), &msg).unwrap()
-                };
+                let exception = 
+                    Exception::from_message(ctx.clone(), &msg).unwrap();
                 exception
                     .set("original_java_exception_class", class_name)
                     .unwrap();
@@ -832,7 +829,7 @@ mod tests {
                 "(D)Ljava/lang/Double;",
                 &[jni::objects::JValueGen::Double(value)],
             )
-            .expect("Failed to create Integer object from value");
+            .expect("Failed to create Double object from value");
         let object = result.l().unwrap();
         let proxy = ProxiedJavaValue::from_object(&mut env, &JObject::null(), object);
 

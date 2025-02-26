@@ -23,7 +23,7 @@ default = ["locale_workaround"]
 
 [dependencies]
 # All this dump-* features help debugging
-rquickjs = { version = "0.5.1", features = [
+rquickjs = { version = "0.9.0", features = [
     #  "dump-objects",
     #  "dump-read-object",
     #  "dump-bytecode",
