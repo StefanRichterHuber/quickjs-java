@@ -17,6 +17,11 @@ public class QuickJSScriptException extends RuntimeException {
     private final Integer lineNumber;
 
     /**
+     * JS stack trace
+     */
+    private final String jsStackTrace;
+
+    /**
      * Creates a new QuickJSScriptException. This is instantiated by the native
      * runtime, and therefore has no public constructor.
      *
@@ -29,6 +34,45 @@ public class QuickJSScriptException extends RuntimeException {
         super(message, cause);
         this.fileName = fileName;
         this.lineNumber = lineNumber;
+        this.jsStackTrace = null;
+    }
+
+    /**
+     * Creates a new QuickJSScriptException. This is instantiated by the native
+     * runtime, and therefore has no public constructor.
+     *
+     * @param cause        the cause of the exception
+     * @param message      the message of the exception
+     * @param fileName     the file name of the script
+     * @param jsStackTrace the file name of the script
+     */
+    QuickJSScriptException(Throwable cause, String message, String fileName, String jsStackTrace) {
+        super(message, cause);
+        this.fileName = fileName;
+        this.lineNumber = parseLineNumberFromStackTrace(jsStackTrace);
+        this.jsStackTrace = jsStackTrace;
+
+    }
+
+    /**
+     * Parses the line number from the JS stack trace
+     * @param jsStackTrace Stack trace
+     * @return Line number found or null fi none present
+     */
+    private static Integer parseLineNumberFromStackTrace(String jsStackTrace) {
+        // Example stack trace" at <eval> (eval_script:3:11)"
+        if (jsStackTrace != null && !jsStackTrace.isBlank() && jsStackTrace.contains(":")) {
+            String[] parts = jsStackTrace.split(":");
+            if (parts.length >= 2) {
+                try {
+                    Integer result = Integer.parseInt(parts[1]);
+                    return result;
+                } catch (NumberFormatException e) {
+                    return null;
+                }
+            }
+        }
+        return null;
     }
 
     /**
@@ -41,6 +85,7 @@ public class QuickJSScriptException extends RuntimeException {
         super(message);
         this.fileName = null;
         this.lineNumber = null;
+        this.jsStackTrace = null;
     }
 
     /**

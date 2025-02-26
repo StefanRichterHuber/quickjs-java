@@ -1,5 +1,3 @@
-use std::ptr::addr_eq;
-
 use crate::java_js_proxy::ProxiedJavaValue;
 use crate::js_java_proxy::JSJavaProxy;
 use crate::runtime::{ptr_to_runtime, runtime_to_ptr};
@@ -102,25 +100,15 @@ pub(crate) fn handle_exception<'vm>(
         Error::Exception => {
             let catch = js_context.catch();
             if let Some(execp) = catch.as_exception() {
-                let line_number = {
-                    execp
-                        .get(PredefinedAtom::LineNumber)
-                        .and_then(|v: JSJavaProxy| {
-                            v.into_jobject(java_context, env)
-                                .ok_or(rquickjs::Error::Unknown)
-                        })
-                        .unwrap_or(JObject::null())
+                let file_name = JObject::null();
+
+
+                let stack_trace = if let Some(stack) = execp.stack() {
+                    env.new_string(stack).unwrap().into()
+                } else {
+                    JObject::null()
                 };
 
-                let file_name = {
-                    execp
-                        .get(PredefinedAtom::FileName)
-                        .and_then(|v: JSJavaProxy| {
-                            v.into_jobject(java_context, env)
-                                .ok_or(rquickjs::Error::Unknown)
-                        })
-                        .unwrap_or(JObject::null())
-                };
                 // Set default filename if none set
                 let file_name = if env.is_same_object(JObject::null(), &file_name).unwrap() {
                     let str = rquickjs::String::from_str(js_context.clone(), "<script>").unwrap();
@@ -130,16 +118,6 @@ pub(crate) fn handle_exception<'vm>(
                 } else {
                     file_name
                 };
-
-                let java_file_number: Value = execp.get("original_java_exception_line").unwrap();
-                let java_file_number =
-                    if java_file_number.is_null() || java_file_number.is_undefined() {
-                        line_number
-                    } else {
-                        JSJavaProxy::new(java_file_number)
-                            .into_jobject(java_context, env)
-                            .unwrap_or(line_number)
-                    };
 
                 let java_file_name: Value = execp.get("original_java_exception_file").unwrap();
                 let java_file_name = if java_file_name.is_null() || java_file_name.is_undefined() {
@@ -196,12 +174,12 @@ pub(crate) fn handle_exception<'vm>(
 
                 let exception_object:JThrowable = env.new_object(
                     exception_class,
-                    "(Ljava/lang/Throwable;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;)V",
+                    "(Ljava/lang/Throwable;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
                     &[
                         jni::objects::JValueGen::Object(&throwable),
                         jni::objects::JValueGen::Object(&message),
                         jni::objects::JValueGen::Object(&java_file_name),
-                        jni::objects::JValueGen::Object(&java_file_number),
+                        jni::objects::JValueGen::Object(&stack_trace),
                         ],
                 ).unwrap_or(JObject::null()).into();
 
