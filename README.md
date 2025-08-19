@@ -25,7 +25,7 @@ There are, however, other projects binding QuickJS to the JVM, which might be wo
 
 You need Java 21 and Rust with `cargo` and [`cross`](https://github.com/cross-rs/cross) to build this project. So a simple `mvn clean install` is enough to build and test the whole library. Initial build takes some while because for each target platform a Docker image has to be downloaded.
 
-The `exec-maven-plugin` is used to start the cross build of the native library for several different platforms and afterwards the created library files are copied together using `maven-resources-plugin`. With the file `src/main/rust/quickjslib/Cross.toml` cross is configured for different platforms. Especially a recent version `libclang` is necessary to use Rust `bindgen` to generate the platform-specific bindings to QuickJS within `cross`. Therefore one has to add new platforms to `src/main/rust/quickjslib/Cross.toml` and add a new execution to both the `exec-maven-plugin` and the `maven-resources-plugin`.
+The `exec-maven-plugin` is used to start the cross build of the native library for several different platforms and afterwards the created library files are copied together using `maven-resources-plugin`. With the file `src/main/rust/quickjslib/Cross.toml` cross is configured for different platforms. Especially a recent version `libclang` is necessary to use Rust `bindgen` to generate the platform-specific bindings to QuickJS within `cross`. Therefore one has to add a new execution to both the `exec-maven-plugin` and the `maven-resources-plugin`.
 
 Currently supported platforms for the native library:
 
