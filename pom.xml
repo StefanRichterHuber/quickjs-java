@@ -98,6 +98,7 @@
               <executable>cargo</executable>
               <workingDirectory>${project.basedir}/src/main/rust/quickjslib</workingDirectory>
               <arguments>
+                <argument>+stable</argument>
                 <argument>install</argument>
                 <argument>cross</argument>
                 <argument>--git</argument>
@@ -126,6 +127,9 @@
                 <argument>--target-dir</argument>
                 <argument>${project.build.directory}/rust</argument>
               </arguments>
+              <environmentVariables>
+                <RUSTUP_TOOLCHAIN>stable</RUSTUP_TOOLCHAIN>
+              </environmentVariables>
             </configuration>
           </execution>
           <execution>
@@ -146,6 +150,9 @@
                 <argument>--target-dir</argument>
                 <argument>${project.build.directory}/rust</argument>
               </arguments>
+              <environmentVariables>
+                <RUSTUP_TOOLCHAIN>stable</RUSTUP_TOOLCHAIN>
+              </environmentVariables>
             </configuration>
           </execution>
           <execution>
@@ -166,6 +173,9 @@
                 <argument>--target-dir</argument>
                 <argument>${project.build.directory}/rust</argument>
               </arguments>
+              <environmentVariables>
+                <RUSTUP_TOOLCHAIN>stable</RUSTUP_TOOLCHAIN>
+              </environmentVariables>
             </configuration>
           </execution>
           <execution>
@@ -186,6 +196,9 @@
                 <argument>--target-dir</argument>
                 <argument>${project.build.directory}/rust</argument>
               </arguments>
+              <environmentVariables>
+                <RUSTUP_TOOLCHAIN>stable</RUSTUP_TOOLCHAIN>
+              </environmentVariables>
             </configuration>
           </execution>
         </executions>

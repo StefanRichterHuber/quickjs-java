@@ -3,20 +3,3 @@ default-target = "x86_64-unknown-linux-gnu" # use this target if none is explici
 pre-build = [
     "apt-get update && apt-get install --assume-yes --no-install-recommends libclang-10-dev clang-10 patch",
 ]
-
-
-[target.aarch64-unknown-linux-gnu]
-# Need the newest image because otherwise clang is outdated
-image = "ghcr.io/cross-rs/aarch64-unknown-linux-gnu:main"
-
-[target.x86_64-unknown-linux-gnu]
-# Need the newest image because otherwise clang is outdated
-image = "ghcr.io/cross-rs/x86_64-unknown-linux-gnu:main"
-
-[target.armv7-unknown-linux-gnueabihf]
-# Need the newest image because otherwise clang is outdated
-image = "ghcr.io/cross-rs/armv7-unknown-linux-gnueabihf:main"
-
-[target.x86_64-pc-windows-gnu]
-# Need the newest image because otherwise clang is outdated
-image = "ghcr.io/cross-rs/x86_64-pc-windows-gnu:main"
