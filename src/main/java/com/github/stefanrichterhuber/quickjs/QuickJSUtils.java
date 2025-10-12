@@ -5,6 +5,7 @@ import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletionStage;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -56,6 +57,8 @@ public final class QuickJSUtils {
         if (QuickJSFunction.class.isAssignableFrom(clazz))
             return true;
         if (VariadicFunction.class.isAssignableFrom(clazz))
+            return true;
+        if (CompletionStage.class.isAssignableFrom(clazz))
             return true;
 
         return false;

@@ -745,4 +745,17 @@ public class QuickJSContextTest {
             assertEquals("Hello World !", r7);
         }
     }
+
+    @Test
+    public void promiseTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            CompletableFuture<Integer> v1 = CompletableFuture.completedFuture(15);
+            context.setGlobal("v1", v1);
+
+            context.eval("await v1");
+
+        }
+    }
 }

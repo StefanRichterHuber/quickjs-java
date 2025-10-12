@@ -7,6 +7,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletionStage;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -325,6 +326,16 @@ public class QuickJSContext implements AutoCloseable {
      * @param f    Function to add
      */
     public void setGlobal(String name, BiConsumer<?, ?> f) {
+        this.setGlobal(getContextPointer(), name, f);
+    }
+
+    /**
+     * Adds a global CompletionStage to the context.
+     * 
+     * @param name Name of the variable
+     * @param f    CompletionStage to add
+     */
+    public void setGlobal(String name, CompletionStage<?> f) {
         this.setGlobal(getContextPointer(), name, f);
     }
 

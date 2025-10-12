@@ -1,7 +1,8 @@
 use std::rc::Rc;
 
 use jni::errors;
-use jni::objects::{GlobalRef, JObjectArray, JThrowable, JValueGen};
+use jni::objects::{GlobalRef, JObjectArray, JThrowable, JValue, JValueGen};
+use jni::signature::ReturnType;
 use jni::{
     objects::{JObject, JString},
     JNIEnv,
@@ -111,6 +112,10 @@ pub enum ProxiedJavaValue {
     Map(Vec<(String, ProxiedJavaValue)>),
     JSFunction(i64),
     Array(Vec<ProxiedJavaValue>),
+    Promise(
+        Box<dyn FnMut(Value<'_>) -> ProxiedJavaValue>,
+        Box<dyn FnMut(Value<'_>) -> ProxiedJavaValue>,
+    ),
 }
 
 impl ProxiedJavaValue {
@@ -421,7 +426,7 @@ impl ProxiedJavaValue {
         let target = Rc::new(env.new_global_ref(obj).unwrap());
         let context = Rc::new(env.new_global_ref(context).unwrap());
         // https://github.com/jni-rs/jni-rs/issues/488#issuecomment-1699852154
-        let vm = env.get_java_vm().unwrap();
+        let vm: jni::JavaVM = env.get_java_vm().unwrap();
 
         let f = move |msg: Value| {
             trace!("Calling java function java.util.function.Function");
@@ -449,6 +454,93 @@ impl ProxiedJavaValue {
         };
         trace!("Create JS function from Java Function<Object, Object>",);
         ProxiedJavaValue::Function(Box::new(f))
+    }
+
+    /// Warps a java.util.concurrent.CompletionStage
+    fn from_completion_stage<'vm>(
+        env: &mut JNIEnv<'vm>,
+        context: &JObject<'vm>,
+        obj: JObject<'vm>,
+    ) -> Self {
+        let wrapper_class = env
+            .find_class("com/github/stefanrichterhuber/quickjs/CompletionStageWrapper")
+            .expect("Failed to load the target class");
+
+        let wrapper: JObject<'vm> = env
+            .new_object(
+                wrapper_class,
+                "(Ljava/util/concurrent/CompletionStage;)V",
+                &[JValue::Object(&obj)],
+            )
+            .unwrap();
+
+        let wrapper = Rc::new(env.new_global_ref(wrapper).unwrap());
+        let context = Rc::new(env.new_global_ref(context).unwrap());
+
+        let c1 = context.clone();
+        let c2 = context.clone();
+        let w1 = wrapper.clone();
+        let w2 = wrapper.clone();
+
+        // https://github.com/jni-rs/jni-rs/issues/488#issuecomment-1699852154
+        let vm1: jni::JavaVM = env.get_java_vm().unwrap();
+        let vm2: jni::JavaVM = env.get_java_vm().unwrap();
+
+        let resolv_handler = move |resolv: Value| {
+            let mut env = vm1.get_env().unwrap();
+            // This method is called when the promise is created with the resolv handler
+            let resolv_callback = JSJavaProxy::new(resolv)
+                .into_jobject(&c1, &mut env)
+                .unwrap();
+
+            let then_id = env
+                .get_method_id(
+                    "com/github/stefanrichterhuber/quickjs/CompletionStageWrapper",
+                    "then",
+                    "(Ljava/util/concurrent/CompletionStage;)V",
+                )
+                .unwrap();
+
+            unsafe {
+                env.call_method_unchecked(
+                    w1.as_obj(),
+                    then_id,
+                    ReturnType::Primitive(jni::signature::Primitive::Void),
+                    &[JValue::Object(&resolv_callback).as_jni()],
+                )
+                .unwrap()
+            };
+
+            ProxiedJavaValue::Null
+        };
+        let reject_handler = move |reject: Value| {
+            let mut env = vm2.get_env().unwrap();
+
+            // This method is called when the promise is created with the resolv handler
+            let reject_callback = JSJavaProxy::new(reject)
+                .into_jobject(&c2, &mut env)
+                .unwrap();
+
+            let exceptionally_id = env
+                .get_method_id(
+                    "com/github/stefanrichterhuber/quickjs/CompletionStageWrapper",
+                    "exceptionally",
+                    "(Ljava/util/concurrent/CompletionStage;)V",
+                )
+                .unwrap();
+
+            unsafe {
+                env.call_method_unchecked(
+                    w2.as_obj(),
+                    exceptionally_id,
+                    ReturnType::Primitive(jni::signature::Primitive::Void),
+                    &[JValue::Object(&reject_callback).as_jni()],
+                )
+                .unwrap()
+            };
+            ProxiedJavaValue::Null
+        };
+        ProxiedJavaValue::Promise(Box::new(resolv_handler), Box::new(reject_handler))
     }
 
     /// Wraps a java.util.function.BiFunction into a JS function
@@ -654,6 +746,12 @@ impl ProxiedJavaValue {
             let value = raw_value.unwrap().j().unwrap();
             trace!("Map Java Long to JS BigInteger");
             ProxiedJavaValue::BigInteger(value)
+        } else if ProxiedJavaValue::is_instance_of(
+            "java/util/concurrent/CompletionStage",
+            env,
+            &obj,
+        ) {
+            ProxiedJavaValue::from_completion_stage(env, context, obj)
         } else {
             let raw_value = env.call_method(&obj, "toString", "()Ljava/lang/String;", &[]);
             let str: JString = raw_value.unwrap().l().unwrap().into();
@@ -669,8 +767,7 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
     fn into_js(self, ctx: &rquickjs::Ctx<'js>) -> rquickjs::Result<Value<'js>> {
         let result = match self {
             ProxiedJavaValue::Throwable(msg, class_name, file, line) => {
-                let exception = 
-                    Exception::from_message(ctx.clone(), &msg).unwrap();
+                let exception = Exception::from_message(ctx.clone(), &msg).unwrap();
                 exception
                     .set("original_java_exception_class", class_name)
                     .unwrap();
@@ -749,6 +846,18 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
             ProxiedJavaValue::VarFunction(f) => {
                 let func = Function::new::<JObject, VariadicFunction>(ctx.clone(), f).unwrap();
                 let s = Value::from_function(func);
+                Ok(s)
+            }
+            ProxiedJavaValue::Promise(mut resolv_handler, mut reject_handler) => {
+                let (prom, resolv, reject) = ctx.promise().unwrap();
+
+                let resolv_value = Value::from_function(resolv);
+                let reject_value = Value::from_function(reject);
+
+                resolv_handler(resolv_value);
+                reject_handler(reject_value);
+
+                let s = Value::from_promise(prom);
                 Ok(s)
             }
         };
