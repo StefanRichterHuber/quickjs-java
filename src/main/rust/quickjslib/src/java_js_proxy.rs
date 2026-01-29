@@ -2,15 +2,17 @@ use std::rc::Rc;
 
 use jni::errors;
 use jni::objects::{GlobalRef, JObjectArray, JThrowable, JValueGen};
+use jni::sys::jlong;
 use jni::{
     objects::{JObject, JString},
     JNIEnv,
 };
 use log::{error, trace, warn};
 use rquickjs::function::{IntoJsFunc, ParamRequirement};
-use rquickjs::{BigInt, Exception, FromJs, Function, IntoJs, Value};
+use rquickjs::{Array, BigInt, Exception, FromJs, Function, IntoJs, Value};
 
 use crate::foreign_function::{function_to_ptr, ptr_to_function};
+use crate::js_array::ptr_to_jsarray;
 use crate::js_java_proxy::JSJavaProxy;
 
 /// Type for the function called with the iterator_collect method
@@ -111,6 +113,7 @@ pub enum ProxiedJavaValue {
     Map(Vec<(String, ProxiedJavaValue)>),
     JSFunction(i64),
     Array(Vec<ProxiedJavaValue>),
+    NativeArray(i64),
 }
 
 impl ProxiedJavaValue {
@@ -251,6 +254,17 @@ impl ProxiedJavaValue {
         context: &JObject<'vm>,
         obj: JObject<'vm>,
     ) -> Self {
+        // Check if the iterable is actually a QuickJSArray (wrapping a native JS array)
+        if ProxiedJavaValue::is_instance_of(
+            "com/github/stefanrichterhuber/quickjs/QuickJSArray",
+            env,
+            &obj,
+        ) {
+            trace!("Unwrap Java QuickJSArray to JS array");
+            let array_ptr = env.get_field(&obj, "ptr", "J").unwrap().j().unwrap();
+            return ProxiedJavaValue::NativeArray(array_ptr);
+        }
+
         trace!("Create JS array from Java java.lang.Iterable");
 
         // Create an iterator over all results
@@ -669,8 +683,7 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
     fn into_js(self, ctx: &rquickjs::Ctx<'js>) -> rquickjs::Result<Value<'js>> {
         let result = match self {
             ProxiedJavaValue::Throwable(msg, class_name, file, line) => {
-                let exception = 
-                    Exception::from_message(ctx.clone(), &msg).unwrap();
+                let exception = Exception::from_message(ctx.clone(), &msg).unwrap();
                 exception
                     .set("original_java_exception_class", class_name)
                     .unwrap();
@@ -694,7 +707,6 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
                 s
             }
             ProxiedJavaValue::BigInteger(v) => {
-                // FIXME BigInteger currently not supported by rquickjs
                 let bi = BigInt::from_i64(ctx.clone(), v).unwrap();
                 let s = Value::from_big_int(bi);
                 Ok(s)
@@ -749,6 +761,11 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
             ProxiedJavaValue::VarFunction(f) => {
                 let func = Function::new::<JObject, VariadicFunction>(ctx.clone(), f).unwrap();
                 let s = Value::from_function(func);
+                Ok(s)
+            }
+            ProxiedJavaValue::NativeArray(ptr) => {
+                let array = ptr_to_jsarray(ptr);
+                let s = Value::from_array(*array);
                 Ok(s)
             }
         };

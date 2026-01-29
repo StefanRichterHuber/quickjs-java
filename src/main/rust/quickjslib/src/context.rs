@@ -34,11 +34,11 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
 }
 
 /// Converts a pointer to a context back to a Box<Context>.
-fn ptr_to_context(context_ptr: jlong) -> Box<Context> {
+pub(crate) fn ptr_to_context(context_ptr: jlong) -> Box<Context> {
     unsafe { Box::from_raw(context_ptr as *mut Context) }
 }
 
-fn context_to_ptr(context: Box<Context>) -> jlong {
+pub(crate) fn context_to_ptr(context: Box<Context>) -> jlong {
     Box::into_raw(context) as jlong
 }
 
@@ -47,7 +47,7 @@ fn context_to_ptr(context: Box<Context>) -> jlong {
 pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext_closeContext<
     'a,
 >(
-    mut _env: JNIEnv<'a>,
+    mut _env: &mut JNIEnv<'a>,
     _obj: JObject<'a>,
     context_ptr: jlong,
 ) {
@@ -89,6 +89,15 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
     result
 }
 
+/// Extracts the context from a java QuickJSContext object
+pub(crate) fn get_context_from_quickjs_context<'a>(
+    env: &mut JNIEnv<'a>,
+    ctx: JObject<'a>,
+) -> Box<Context> {
+    let context_ptr = env.get_field(ctx, "ptr", "J").unwrap().j().unwrap();
+    ptr_to_context(context_ptr)
+}
+
 /// Handle JS errors. Extracts the message and throws a Java exception..
 pub(crate) fn handle_exception<'vm>(
     e: Error,
@@ -101,7 +110,6 @@ pub(crate) fn handle_exception<'vm>(
             let catch = js_context.catch();
             if let Some(execp) = catch.as_exception() {
                 let file_name = JObject::null();
-
 
                 let stack_trace = if let Some(stack) = execp.stack() {
                     env.new_string(stack).unwrap().into()

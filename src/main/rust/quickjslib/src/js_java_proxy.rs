@@ -5,6 +5,8 @@ use log::trace;
 use rquickjs::atom::PredefinedAtom;
 use rquickjs::{FromJs, Value};
 
+use crate::js_array;
+
 /// This proxy assist in converting JS values to Java values
 pub struct JSJavaProxy<'js> {
     pub value: Value<'js>,
@@ -37,39 +39,27 @@ impl<'js, 'vm> JSJavaProxy<'js> {
             trace!("Map JS undefined to Java null");
             Some(JObject::null())
         } else if self.value.is_array() {
-            trace!("Map JS array to Java java.util.ArrayList",);
-            let array = self.value.as_array().unwrap();
-            let len = array.len() as i32;
+            trace!("Map JS array to Java com.github.stefanrichterhuber.quickjs.QuickJSArray");
 
-            let list_class = env
-                .find_class("java/util/ArrayList")
+            let quickjs_array_class = env
+                .find_class("com/github/stefanrichterhuber/quickjs/QuickJSArray")
                 .expect("Failed to load the target class");
-            let list = env
-                .new_object(list_class, "(I)V", &[jni::objects::JValueGen::Int(len)])
+
+            let array = Box::new(self.value.into_array().unwrap());
+            let array_ptr = js_array::jsarray_to_ptr(array);
+
+            let quickjs_array = env
+                .new_object(
+                    quickjs_array_class,
+                    "(JLcom/github/stefanrichterhuber/quickjs/QuickJSContext;)V",
+                    &[
+                        jni::objects::JValueGen::Long(array_ptr as jlong),
+                        jni::objects::JValueGen::Object(context),
+                    ],
+                )
                 .unwrap();
 
-            let add_id = env
-                .get_method_id("java/util/ArrayList", "add", "(Ljava/lang/Object;)Z")
-                .unwrap();
-
-            for value in array.iter::<JSJavaProxy>() {
-                let value = value.unwrap();
-                let value = value.into_jobject(context, env);
-
-                if let Some(v) = value {
-                    unsafe {
-                        env.call_method_unchecked(
-                            &list,
-                            add_id,
-                            ReturnType::Primitive(jni::signature::Primitive::Boolean),
-                            &[JValue::Object(&v).as_jni()],
-                        )
-                        .unwrap()
-                    };
-                }
-            }
-
-            Some(list)
+            Some(quickjs_array)
         } else if self.value.is_function() {
             let f = self.value.as_function().unwrap();
             let f = f.clone();

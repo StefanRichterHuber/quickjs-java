@@ -61,7 +61,7 @@ public class QuickJSScriptException extends RuntimeException {
      */
     private static Integer parseLineNumberFromStackTrace(String jsStackTrace) {
         // Example stack trace" at <eval> (eval_script:3:11)"
-        if (jsStackTrace != null && !jsStackTrace.isBlank() && jsStackTrace.contains(":")) {
+        if (jsStackTrace != null && jsStackTrace.isBlank() == false && jsStackTrace.contains(":")) {
             String[] parts = jsStackTrace.split(":");
             if (parts.length >= 2) {
                 try {
