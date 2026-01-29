@@ -11,6 +11,7 @@ use jni::{
 use log::trace;
 use rquickjs::{Array, Ctx, Persistent};
 
+/// Helper function to get a mutable reference to the array
 fn with_array<'java, F, R>(
     mut _env: JNIEnv<'java>,
     array_ptr: jlong,
@@ -37,6 +38,7 @@ where
     result
 }
 
+/// Implementation of com.github.stefanrichterhuber.quickjs.QuickJSArray.createNativeArray
 #[no_mangle]
 pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_createNativeArray<
     'a,
@@ -62,6 +64,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_c
     persistent_to_ptr(result)
 }
 
+/// Implementation of com.github.stefanrichterhuber.quickjs.QuickJSArray.closeArray
 #[no_mangle]
 pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_closeArray<'a>(
     mut _env: JNIEnv<'a>,
@@ -73,6 +76,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_c
     drop(runtime);
 }
 
+/// Implementation of com.github.stefanrichterhuber.quickjs.QuickJSArray.getArraySize
 #[no_mangle]
 pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_getArraySize<'a>(
     mut _env: JNIEnv<'a>,
@@ -86,6 +90,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_g
     result
 }
 
+/// Implementation of com.github.stefanrichterhuber.quickjs.QuickJSArray.setValue
 #[no_mangle]
 pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_setValue<'a>(
     mut env: JNIEnv<'a>,
@@ -103,6 +108,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_s
     true as jboolean
 }
 
+/// Implementation of com.github.stefanrichterhuber.quickjs.QuickJSArray.getValue
 #[no_mangle]
 pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_getValue<'a>(
     env: JNIEnv<'a>,
@@ -126,10 +132,12 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_g
     value
 }
 
+/// Converts a pointer to a persistent array
 pub(crate) fn ptr_to_persistent<'js>(array_ptr: jlong) -> Box<Persistent<Array<'static>>> {
     unsafe { Box::from_raw(array_ptr as *mut Persistent<Array<'static>>) }
 }
 
+/// Converts a persistent array to a pointer
 pub(crate) fn persistent_to_ptr<'js>(array: Box<Persistent<Array<'static>>>) -> jlong {
     Box::into_raw(array) as jlong
 }
