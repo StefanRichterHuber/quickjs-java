@@ -2,17 +2,16 @@ use std::rc::Rc;
 
 use jni::errors;
 use jni::objects::{GlobalRef, JObjectArray, JThrowable, JValueGen};
-use jni::sys::jlong;
 use jni::{
     objects::{JObject, JString},
     JNIEnv,
 };
-use log::{error, trace, warn};
+use log::{error, info, trace, warn};
 use rquickjs::function::{IntoJsFunc, ParamRequirement};
-use rquickjs::{Array, BigInt, Exception, FromJs, Function, IntoJs, Value};
+use rquickjs::{BigInt, Exception, FromJs, Function, IntoJs, Value};
 
 use crate::foreign_function::{function_to_ptr, ptr_to_function};
-use crate::js_array::ptr_to_jsarray;
+use crate::js_array::{persistent_to_ptr, ptr_to_persistent};
 use crate::js_java_proxy::JSJavaProxy;
 
 /// Type for the function called with the iterator_collect method
@@ -260,8 +259,9 @@ impl ProxiedJavaValue {
             env,
             &obj,
         ) {
-            trace!("Unwrap Java QuickJSArray to JS array");
+            info!("Unwrap Java QuickJSArray to JS array");
             let array_ptr = env.get_field(&obj, "ptr", "J").unwrap().j().unwrap();
+            info!("Unwraped Java QuickJSArray to JS array");
             return ProxiedJavaValue::NativeArray(array_ptr);
         }
 
@@ -763,9 +763,14 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
                 let s = Value::from_function(func);
                 Ok(s)
             }
-            ProxiedJavaValue::NativeArray(ptr) => {
-                let array = ptr_to_jsarray(ptr);
-                let s = Value::from_array(*array);
+            ProxiedJavaValue::NativeArray(array_ptr) => {
+                let array_ptr = ptr_to_persistent(array_ptr);
+                let array = array_ptr.clone().restore(ctx).unwrap();
+                let s = Value::from_array(array);
+
+                // Prevents dropping the array
+                _ = persistent_to_ptr(array_ptr);
+
                 Ok(s)
             }
         };

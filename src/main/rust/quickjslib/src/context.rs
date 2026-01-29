@@ -92,7 +92,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
 /// Extracts the context from a java QuickJSContext object
 pub(crate) fn get_context_from_quickjs_context<'a>(
     env: &mut JNIEnv<'a>,
-    ctx: JObject<'a>,
+    ctx: &JObject<'a>,
 ) -> Box<Context> {
     let context_ptr = env.get_field(ctx, "ptr", "J").unwrap().j().unwrap();
     ptr_to_context(context_ptr)

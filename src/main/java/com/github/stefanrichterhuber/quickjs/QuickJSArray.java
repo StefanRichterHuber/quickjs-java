@@ -4,6 +4,7 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
+import java.util.Objects;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -93,7 +94,7 @@ public class QuickJSArray<T> implements AutoCloseable, List<T> {
      * @param ptr Native pointer to the js array
      * @return size of the array
      */
-    private static native int getArraySize(long ptr);
+    private static native int getArraySize(long ptr, QuickJSContext ctx);
 
     /**
      * Creates a new native array
@@ -171,7 +172,8 @@ public class QuickJSArray<T> implements AutoCloseable, List<T> {
 
     @Override
     public boolean add(T value) {
-        final int len = getArraySize(this.getContextPointer());
+        LOGGER.info("Adding value to QuickJSArray: {}", value);
+        final int len = getArraySize(this.getContextPointer(), this.ctx);
         return setValue(this.getContextPointer(), this.ctx, len, value);
     }
 
@@ -350,7 +352,69 @@ public class QuickJSArray<T> implements AutoCloseable, List<T> {
 
     @Override
     public int size() {
-        return getArraySize(this.getContextPointer());
+        return getArraySize(this.getContextPointer(), this.ctx);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        // Stolen from java.util.ArrayList
+        if (o == this) {
+            return true;
+        } else if (!(o instanceof List)) {
+            return false;
+        } else {
+            boolean equal = this.equalsRange((List) o, 0, this.size());
+            return equal;
+        }
+    }
+
+    boolean equalsRange(List<?> other, int from, int to) {
+        Iterator oit;
+        for (oit = other.iterator(); from < to; ++from) {
+            if (!oit.hasNext() || !Objects.equals(get(from), oit.next())) {
+                return false;
+            }
+        }
+
+        return !oit.hasNext();
+    }
+
+    @Override
+    public int hashCode() {
+        // Stolen from java.util.ArrayList
+        int hash = this.hashCodeRange(0, this.size());
+        return hash;
+    }
+
+    int hashCodeRange(int from, int to) {
+        int hashCode = 1;
+
+        for (int i = from; i < to; ++i) {
+            Object e = get(i);
+            hashCode = 31 * hashCode + (e == null ? 0 : e.hashCode());
+        }
+
+        return hashCode;
+    }
+
+    public String toString() {
+        Iterator<T> it = this.iterator();
+        if (!it.hasNext()) {
+            return "[]";
+        } else {
+            StringBuilder sb = new StringBuilder();
+            sb.append('[');
+
+            while (true) {
+                T e = it.next();
+                sb.append(e == this ? "(this Collection)" : e);
+                if (!it.hasNext()) {
+                    return sb.append(']').toString();
+                }
+
+                sb.append(',').append(' ');
+            }
+        }
     }
 
     @Override

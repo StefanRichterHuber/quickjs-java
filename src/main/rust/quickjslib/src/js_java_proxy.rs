@@ -3,9 +3,9 @@ use jni::{objects::JObject, signature::ReturnType, sys::jlong, JNIEnv};
 use log::error;
 use log::trace;
 use rquickjs::atom::PredefinedAtom;
-use rquickjs::{FromJs, Value};
+use rquickjs::{FromJs, Persistent, Value};
 
-use crate::js_array;
+use crate::js_array::persistent_to_ptr;
 
 /// This proxy assist in converting JS values to Java values
 pub struct JSJavaProxy<'js> {
@@ -29,7 +29,6 @@ impl<'js, 'vm> JSJavaProxy<'js> {
     pub fn into_jobject(
         self,
         context: &JObject<'vm>,
-
         env: &mut JNIEnv<'vm>,
     ) -> Option<JObject<'vm>> {
         if self.value.is_null() {
@@ -45,8 +44,12 @@ impl<'js, 'vm> JSJavaProxy<'js> {
                 .find_class("com/github/stefanrichterhuber/quickjs/QuickJSArray")
                 .expect("Failed to load the target class");
 
-            let array = Box::new(self.value.into_array().unwrap());
-            let array_ptr = js_array::jsarray_to_ptr(array);
+            let array = self.value.into_array().unwrap();
+            // Increaes ref count of the array, so it is not dropped when the context is dropped
+            // unsafe { qjs::JS_DupValue(array.ctx().as_raw().as_ptr(), array.as_raw()) };
+            let ctx = array.ctx().clone();
+            let persistent = Persistent::save(&ctx, array);
+            let array_ptr = persistent_to_ptr(Box::new(persistent));
 
             let quickjs_array = env
                 .new_object(

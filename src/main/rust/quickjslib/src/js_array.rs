@@ -1,41 +1,39 @@
 use crate::{
-    context::{self, context_to_ptr, ptr_to_context},
+    context::{self, context_to_ptr},
     java_js_proxy,
     js_java_proxy::JSJavaProxy,
-    with_locale,
 };
 use jni::{
-    objects::{JObject, JObjectArray},
+    objects::JObject,
     sys::{jboolean, jint, jlong},
     JNIEnv,
 };
 use log::trace;
-use rquickjs::{function::Args, Array, Context, Function};
+use rquickjs::{Array, Ctx, Persistent};
 
-#[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_closeArray<'a>(
-    mut _env: JNIEnv<'a>,
-    _obj: JObject<'a>,
+fn with_array<'java, F, R>(
+    mut _env: JNIEnv<'java>,
     array_ptr: jlong,
-) {
-    trace!("Closed QuickJSArray with id {}", array_ptr);
-    let runtime = ptr_to_jsarray(array_ptr);
-    drop(runtime);
-}
+    ctx: JObject<'java>,
+    f: F,
+) -> R
+where
+    for<'js> F: FnOnce(&mut JNIEnv<'java>, Ctx<'js>, Array<'js>) -> R,
+    R: 'java,
+{
+    let array_ptr = ptr_to_persistent(array_ptr);
+    let context = context::get_context_from_quickjs_context(&mut _env, &ctx);
 
-#[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_getArraySize<'a>(
-    mut _env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-    runtime_ptr: jlong,
-) -> jint {
-    let array = ptr_to_jsarray(runtime_ptr);
-    trace!("Called QuickJSArray.getArraySize() with id {}", runtime_ptr);
-
-    let result = array.len() as jint;
+    let result = context.with(|ctx| {
+        let array = array_ptr.clone().restore(&ctx).unwrap();
+        f(&mut _env, ctx, array)
+    });
 
     // Prevents dropping the array
-    _ = jsarray_to_ptr(array);
+    _ = persistent_to_ptr(array_ptr);
+
+    // Prevents dropping the context
+    _ = context_to_ptr(context);
     result
 }
 
@@ -47,19 +45,45 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_c
     _obj: JObject<'a>,
     ctx: JObject<'a>,
 ) -> jlong {
-    let context = context::get_context_from_quickjs_context(&mut _env, ctx);
+    let context = context::get_context_from_quickjs_context(&mut _env, &ctx);
 
     let result = context.with(|ctx| {
-        let array = create_jsarray(&ctx);
-        trace!("Called QuickJSArray.createNativeArray()");
-        let result = jsarray_to_ptr(array);
-        result
+        let js_array = rquickjs::Array::new(ctx.clone()).unwrap();
+        let persistent = Persistent::save(&ctx, js_array);
+        persistent
     });
+
+    trace!("Called QuickJSArray.createNativeArray()");
+    let result = Box::new(result);
 
     // Prevents dropping the context
     _ = context_to_ptr(context);
 
-    result as jlong
+    persistent_to_ptr(result)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_closeArray<'a>(
+    mut _env: JNIEnv<'a>,
+    _obj: JObject<'a>,
+    array_ptr: jlong,
+) {
+    trace!("Closed QuickJSArray with id {}", array_ptr);
+    let runtime = ptr_to_persistent(array_ptr);
+    drop(runtime);
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_getArraySize<'a>(
+    mut _env: JNIEnv<'a>,
+    _obj: JObject<'a>,
+    array_ptr: jlong,
+    ctx: JObject<'a>,
+) -> jint {
+    let result = with_array(_env, array_ptr, ctx, |mut _env, _ctx, array| {
+        array.len() as jint
+    });
+    result
 }
 
 #[no_mangle]
@@ -71,60 +95,41 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_s
     index: jint,
     value: JObject<'a>,
 ) -> jboolean {
-    let array = ptr_to_jsarray(array_ptr);
-
     let value = java_js_proxy::ProxiedJavaValue::from_object(&mut env, &ctx, value);
-    array.set(index as usize, value).unwrap();
-
-    // Prevents dropping the array
-    _ = jsarray_to_ptr(array);
+    with_array(env, array_ptr, ctx, |mut _env, _ctx, array| {
+        array.set(index as usize, value).unwrap()
+    });
 
     true as jboolean
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_getValue<'a>(
-    mut env: JNIEnv<'a>,
+    env: JNIEnv<'a>,
     _obj: JObject<'a>,
     array_ptr: jlong,
     ctx: JObject<'a>,
     index: jint,
 ) -> JObject<'a> {
-    let array = ptr_to_jsarray(array_ptr);
-    let context = context::get_context_from_quickjs_context(&mut env, ctx);
-
-    let s: Result<JSJavaProxy, _> = array.get(index as usize);
-    let value = match s {
-        Ok(s) => s.into_jobject(&_obj, &mut env).unwrap(),
-        Err(e) => {
-            context.with(|ctx| {
-                context::handle_exception(e, &ctx, &_obj, &mut env);
-            });
-            JObject::null()
-        }
-    };
-
-    // Prevents dropping the array
-    _ = jsarray_to_ptr(array);
-
-    // Prevents dropping the context
-    _ = context_to_ptr(context);
+    let value = with_array(env, array_ptr, ctx, |mut env, _ctx, array| {
+        let s: Result<JSJavaProxy, _> = array.get(index as usize).unwrap();
+        let value = match s {
+            Ok(s) => s.into_jobject(&_obj, &mut env).unwrap(),
+            Err(e) => {
+                context::handle_exception(e, &_ctx, &_obj, &mut env);
+                JObject::null()
+            }
+        };
+        value
+    });
 
     value
 }
 
-/// Converts a raw pointer to a array back to a Box<Array>.
-pub(crate) fn ptr_to_jsarray<'js>(array_ptr: jlong) -> Box<Array<'js>> {
-    unsafe { Box::from_raw(array_ptr as *mut Array<'js>) }
+pub(crate) fn ptr_to_persistent<'js>(array_ptr: jlong) -> Box<Persistent<Array<'static>>> {
+    unsafe { Box::from_raw(array_ptr as *mut Persistent<Array<'static>>) }
 }
 
-/// Converts a Box<Array> to a raw pointer.
-pub(crate) fn jsarray_to_ptr<'js>(array: Box<Array<'js>>) -> jlong {
+pub(crate) fn persistent_to_ptr<'js>(array: Box<Persistent<Array<'static>>>) -> jlong {
     Box::into_raw(array) as jlong
-}
-
-/// Creates a new JS array.
-pub(crate) fn create_jsarray<'js>(ctx: &rquickjs::Ctx<'js>) -> Box<Array<'js>> {
-    let obj = rquickjs::Array::new(ctx.clone()).unwrap();
-    Box::new(obj)
 }

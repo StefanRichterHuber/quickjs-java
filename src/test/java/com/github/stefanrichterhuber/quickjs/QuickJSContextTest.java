@@ -410,6 +410,67 @@ public class QuickJSContextTest {
     }
 
     /**
+     * Creates a list on the js side and modifies it from the java side
+     * 
+     * @throws Exception
+     */
+    @Test
+    public void jsListModificationTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            Object result = context.eval("let a = [1, 2, 3]; a");
+            assertInstanceOf(List.class, result);
+            List<Integer> list = (List<Integer>) result;
+            assertEquals(3, list.size());
+            assertEquals(1, list.get(0));
+            assertEquals(2, list.get(1));
+            assertEquals(3, list.get(2));
+
+            list.add(4);
+            assertEquals(4, context.eval("a.length"));
+            assertEquals(4, context.eval("a[3]"));
+            assertEquals(4, list.get(3));
+        }
+    }
+
+    /**
+     * Creates a list on the java side and modifies it from the js side
+     * 
+     * @throws Exception
+     */
+    @Test
+    public void javaListModificationTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            QuickJSArray<Integer> array = new QuickJSArray<>(context);
+
+            array.add(1);
+            array.add(2);
+            array.add(3);
+            context.setGlobal("a", array);
+
+            assertEquals(3, context.eval("a.length"));
+            assertEquals(1, context.eval("a[0]"));
+            assertEquals(2, context.eval("a[1]"));
+            assertEquals(3, context.eval("a[2]"));
+
+            array.set(0, 4);
+            assertEquals(4, context.eval("a[0]"));
+
+            array.add(5);
+            assertEquals(4, context.eval("a.length"));
+            assertEquals(5, context.eval("a[3]"));
+
+            // Array modified in js
+            assertEquals(99, context.eval("a[0] = 99"));
+            assertEquals(99, array.get(0));
+        }
+
+    }
+
+    /**
      * Java Maps could be mapped to JS objects. Key type must be string, value
      * supports all supported java types (simple
      * values, functions, nested maps)
