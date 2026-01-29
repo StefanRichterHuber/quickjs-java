@@ -522,6 +522,19 @@ public class QuickJSContextTest {
 
     }
 
+    @Test
+    public void nestedListTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+            Object result = context.eval("let a = ['a', 21, ['x', 'y', 'z']]; a");
+            assertInstanceOf(List.class, result);
+            assertEquals(3, ((List<?>) result).size());
+            assertEquals("a", ((List<?>) result).get(0));
+            assertEquals(21, ((List<?>) result).get(1));
+            assertEquals(List.of("x", "y", "z"), ((List<?>) result).get(2));
+        }
+    }
+
     /**
      * Java Maps could be mapped to JS objects. Key type must be string, value
      * supports all supported java types (simple
@@ -606,6 +619,15 @@ public class QuickJSContextTest {
                 // assertEquals(2.7, m.get("b"));
                 assertEquals(true, m.get("c"));
                 assertEquals("hello", m.get("d"));
+            }
+            // Simple nested maps
+            {
+                Object v = context.eval("({a: {c: 'Hello'}})");
+                assertNotNull(v);
+                assertInstanceOf(Map.class, v);
+                Map<String, Object> m = (Map<String, Object>) v;
+                Map<String, Object> a = (Map<String, Object>) m.get("a");
+                assertEquals("Hello", a.get("c"));
             }
             // Nested maps in maps
             {

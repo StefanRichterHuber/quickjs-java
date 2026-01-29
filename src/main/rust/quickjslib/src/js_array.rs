@@ -15,19 +15,19 @@ use rquickjs::{Array, Ctx, Persistent};
 fn with_array<'java, F, R>(
     mut _env: JNIEnv<'java>,
     array_ptr: jlong,
-    ctx: JObject<'java>,
+    context_object: JObject<'java>,
     f: F,
 ) -> R
 where
-    for<'js> F: FnOnce(&mut JNIEnv<'java>, Ctx<'js>, Array<'js>) -> R,
+    for<'js> F: FnOnce(&mut JNIEnv<'java>, JObject<'java>, Ctx<'js>, Array<'js>) -> R,
     R: 'java,
 {
     let array_ptr = ptr_to_persistent(array_ptr);
-    let context = context::get_context_from_quickjs_context(&mut _env, &ctx);
+    let context = context::get_context_from_quickjs_context(&mut _env, &context_object);
 
     let result = context.with(|ctx| {
         let array = array_ptr.clone().restore(&ctx).unwrap();
-        f(&mut _env, ctx, array)
+        f(&mut _env, context_object, ctx, array)
     });
 
     // Prevents dropping the array
@@ -82,11 +82,14 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_g
     mut _env: JNIEnv<'a>,
     _obj: JObject<'a>,
     array_ptr: jlong,
-    ctx: JObject<'a>,
+    context_object: JObject<'a>,
 ) -> jint {
-    let result = with_array(_env, array_ptr, ctx, |mut _env, _ctx, array| {
-        array.len() as jint
-    });
+    let result = with_array(
+        _env,
+        array_ptr,
+        context_object,
+        |mut _env, _context_object, _ctx, array| array.len() as jint,
+    );
     result
 }
 
@@ -96,17 +99,22 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_s
     mut env: JNIEnv<'a>,
     _obj: JObject<'a>,
     array_ptr: jlong,
-    ctx: JObject<'a>,
+    context_object: JObject<'a>,
     index: jint,
     value: JObject<'a>,
 ) -> jboolean {
-    let value = java_js_proxy::ProxiedJavaValue::from_object(&mut env, &ctx, value);
-    with_array(env, array_ptr, ctx, |mut _env, _ctx, array| {
-        let s: Result<(), _> = array.set(index as usize, value);
-        if s.is_err() {
-            context::handle_exception(s.err().unwrap(), &_ctx, &_obj, &mut _env);
-        }
-    });
+    let value = java_js_proxy::ProxiedJavaValue::from_object(&mut env, &context_object, value);
+    with_array(
+        env,
+        array_ptr,
+        context_object,
+        |mut _env, context_object, _ctx, array| {
+            let s: Result<(), _> = array.set(index as usize, value);
+            if s.is_err() {
+                context::handle_exception(s.err().unwrap(), &_ctx, &context_object, &mut _env);
+            }
+        },
+    );
 
     true as jboolean
 }
@@ -117,20 +125,25 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_g
     env: JNIEnv<'a>,
     _obj: JObject<'a>,
     array_ptr: jlong,
-    ctx: JObject<'a>,
+    context_object: JObject<'a>,
     index: jint,
 ) -> JObject<'a> {
-    let value = with_array(env, array_ptr, ctx, |mut env, _ctx, array| {
-        let s: Result<JSJavaProxy, _> = array.get(index as usize).unwrap();
-        let value = match s {
-            Ok(s) => s.into_jobject(&_obj, &mut env).unwrap(),
-            Err(e) => {
-                context::handle_exception(e, &_ctx, &_obj, &mut env);
-                JObject::null()
-            }
-        };
-        value
-    });
+    let value = with_array(
+        env,
+        array_ptr,
+        context_object,
+        |mut env, ctx_object, _ctx, array| {
+            let s: Result<JSJavaProxy, _> = array.get(index as usize).unwrap();
+            let value = match s {
+                Ok(s) => s.into_jobject(&ctx_object, &mut env).unwrap(),
+                Err(e) => {
+                    context::handle_exception(e, &_ctx, &ctx_object, &mut env);
+                    JObject::null()
+                }
+            };
+            value
+        },
+    );
 
     value
 }
@@ -141,12 +154,17 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_r
     env: JNIEnv<'a>,
     _obj: JObject<'a>,
     array_ptr: jlong,
-    ctx: JObject<'a>,
+    context_object: JObject<'a>,
     index: jint,
 ) -> jboolean {
-    let value = with_array(env, array_ptr, ctx, |mut env, _ctx, array| {
-        // TODO implement (call js function splice?)
-    });
+    let value = with_array(
+        env,
+        array_ptr,
+        context_object,
+        |mut env, ctx_object, _ctx, array| {
+            // TODO implement (call js function splice?)
+        },
+    );
 
     true as jboolean
 }

@@ -1,12 +1,12 @@
 use jni::objects::JValue;
 use jni::{objects::JObject, signature::ReturnType, sys::jlong, JNIEnv};
-use log::error;
 use log::trace;
+use log::{debug, error};
 use rquickjs::atom::PredefinedAtom;
 use rquickjs::object::ObjectKeysIter;
 use rquickjs::{Atom, FromAtom, FromJs, Persistent, Value};
 
-use crate::js_array::persistent_to_ptr;
+use crate::js_array;
 use crate::js_object;
 
 /// This proxy assist in converting JS values to Java values
@@ -53,11 +53,9 @@ impl<'js, 'vm> JSJavaProxy<'js> {
                 .expect("Failed to load the target class");
 
             let array = self.value.into_array().unwrap();
-            // Increaes ref count of the array, so it is not dropped when the context is dropped
-            // unsafe { qjs::JS_DupValue(array.ctx().as_raw().as_ptr(), array.as_raw()) };
             let ctx = array.ctx().clone();
             let persistent = Persistent::save(&ctx, array);
-            let array_ptr = persistent_to_ptr(Box::new(persistent));
+            let array_ptr = js_array::persistent_to_ptr(Box::new(persistent));
 
             let quickjs_array = env
                 .new_object(
@@ -110,7 +108,7 @@ impl<'js, 'vm> JSJavaProxy<'js> {
                 }
             }
         } else if self.value.is_object() {
-            trace!("Map JS object to Java com.github.stefanrichterhuber.quickjs.QuickJSObject");
+            debug!("Map JS object to Java com.github.stefanrichterhuber.quickjs.QuickJSObject");
 
             let quickjs_object_class = env
                 .find_class("com/github/stefanrichterhuber/quickjs/QuickJSObject")
