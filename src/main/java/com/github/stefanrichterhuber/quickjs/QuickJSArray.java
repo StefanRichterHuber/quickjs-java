@@ -126,6 +126,16 @@ public class QuickJSArray<T> implements AutoCloseable, List<T> {
     private static native Object getValue(long ptr, QuickJSContext ctx, int index);
 
     /**
+     * Removes the value at the given index
+     * 
+     * @param ptr   Native pointer to the js array
+     * @param ctx   QuickJSContext this array is bound to
+     * @param index index to remove the value from
+     * @return true if the value was removed, false otherwise
+     */
+    private static native boolean removeValue(long ptr, QuickJSContext ctx, int index);
+
+    /**
      * Creates a new QuickJSArray from a native array pointer. This should only be
      * called from a native context!
      * 
@@ -142,6 +152,11 @@ public class QuickJSArray<T> implements AutoCloseable, List<T> {
         ctx.addDependentResource(this::close);
     }
 
+    /**
+     * Creates a new empty QuickJSArray
+     * 
+     * @param ctx QuickJSContext to bind the array to
+     */
     public QuickJSArray(final QuickJSContext ctx) {
         if (ctx == null) {
             throw new NullPointerException("Context must not be null");
@@ -152,6 +167,14 @@ public class QuickJSArray<T> implements AutoCloseable, List<T> {
         ctx.addDependentResource(this::close);
     }
 
+    /**
+     * Creates a new QuickJSArray from a collection of values. The order of the
+     * elements in the array will be the same as the order of the elements in the
+     * collection.
+     * 
+     * @param ctx QuickJSContext to bind the array to
+     * @param src Collection of values to add to the array
+     */
     public QuickJSArray(final QuickJSContext ctx, final Collection<T> src) {
         this(ctx);
         this.addAll(src);
@@ -310,8 +333,12 @@ public class QuickJSArray<T> implements AutoCloseable, List<T> {
 
     @Override
     public T remove(int index) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'remove'");
+        if (index < 0 || index >= size()) {
+            throw new IndexOutOfBoundsException("Invalid index: " + index);
+        }
+        T oldValue = this.get(index);
+        removeValue(this.getContextPointer(), this.ctx, index);
+        return oldValue;
     }
 
     @Override

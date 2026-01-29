@@ -410,6 +410,58 @@ public class QuickJSContextTest {
     }
 
     /**
+     * Creates an object on the js side and modifies it from the java side
+     * 
+     * @throws Exception
+     */
+    @Test
+    public void jsObjectModificatonTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            Object result = context.eval("let a = {x: 1, y: 2}; a");
+            assertInstanceOf(QuickJSObject.class, result);
+            QuickJSObject<String, Integer> object = (QuickJSObject<String, Integer>) result;
+            assertEquals(2, object.size());
+            assertEquals(1, object.get("x"));
+            assertEquals(2, object.get("y"));
+
+            object.put("z", 3);
+            assertEquals(3, object.size());
+            assertEquals(3, context.eval("a.z"));
+
+            context.eval("delete a.x;");
+            assertFalse(object.containsKey("x"));
+
+        }
+    }
+
+    @Test
+    public void javaObjectModificatonTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            QuickJSObject<String, Integer> object = new QuickJSObject<>(context);
+            object.put("x", 1);
+            object.put("y", 2);
+            assertEquals(2, object.size());
+            assertEquals(1, object.get("x"));
+            assertEquals(2, object.get("y"));
+
+            context.setGlobal("a", object);
+            assertEquals(1, context.eval("a.x"));
+            assertEquals(2, context.eval("a.y"));
+
+            context.eval("a.z = 3;");
+            assertEquals(3, object.get("z"));
+
+            object.remove("y");
+            assertFalse(object.containsKey("y"));
+
+        }
+    }
+
+    /**
      * Creates a list on the js side and modifies it from the java side
      * 
      * @throws Exception

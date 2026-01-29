@@ -8,11 +8,12 @@ use jni::{
 };
 use log::{error, info, trace, warn};
 use rquickjs::function::{IntoJsFunc, ParamRequirement};
-use rquickjs::{BigInt, Exception, FromJs, Function, IntoJs, Value};
+use rquickjs::{Atom, BigInt, Exception, FromJs, Function, IntoAtom, IntoJs, Value};
 
 use crate::foreign_function::{function_to_ptr, ptr_to_function};
 use crate::js_array::{persistent_to_ptr, ptr_to_persistent};
 use crate::js_java_proxy::JSJavaProxy;
+use crate::js_object;
 
 /// Type for the function called with the iterator_collect method
 ///
@@ -113,6 +114,7 @@ pub enum ProxiedJavaValue {
     JSFunction(i64),
     Array(Vec<ProxiedJavaValue>),
     NativeArray(i64),
+    NativeObject(i64),
 }
 
 impl ProxiedJavaValue {
@@ -558,6 +560,18 @@ impl ProxiedJavaValue {
 
     /// Converts a Java java.util.Map into a js object
     fn from_map<'vm>(env: &mut JNIEnv<'vm>, context: &JObject<'vm>, obj: JObject<'vm>) -> Self {
+        // Check if the iterable is actually a QuickJSObject (wrapping a native JS object)
+        if ProxiedJavaValue::is_instance_of(
+            "com/github/stefanrichterhuber/quickjs/QuickJSObject",
+            env,
+            &obj,
+        ) {
+            info!("Unwrap Java QuickJSObject to JS object");
+            let object_ptr = env.get_field(&obj, "ptr", "J").unwrap().j().unwrap();
+            info!("Unwraped Java QuickJSObject to JS object");
+            return ProxiedJavaValue::NativeObject(object_ptr);
+        }
+
         trace!("Copy Java Map<Object, Object> to JS object",);
 
         // Iterate over all items
@@ -678,6 +692,21 @@ impl ProxiedJavaValue {
     }
 }
 
+impl<'js> IntoAtom<'js> for ProxiedJavaValue {
+    /// Converts a ProxiedJavaValue into an Atom within the given JS context, if possible.
+    ///
+    /// Only `String`, `Int`, `Double` and `Bool` are supported.
+    fn into_atom(self, ctx: &rquickjs::Ctx<'js>) -> rquickjs::Result<Atom<'js>> {
+        match self {
+            ProxiedJavaValue::String(value) => Atom::from_str(ctx.clone(), &value),
+            ProxiedJavaValue::Int(value) => Atom::from_i32(ctx.clone(), value),
+            ProxiedJavaValue::Double(value) => Atom::from_f64(ctx.clone(), value),
+            ProxiedJavaValue::Bool(value) => Atom::from_bool(ctx.clone(), value),
+            _ => Err(rquickjs::Error::Exception),
+        }
+    }
+}
+
 impl<'js> IntoJs<'js> for ProxiedJavaValue {
     /// Converts a ProxiedJavaValue into a JS value within the given JS context.
     fn into_js(self, ctx: &rquickjs::Ctx<'js>) -> rquickjs::Result<Value<'js>> {
@@ -770,6 +799,16 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
 
                 // Prevents dropping the array
                 _ = persistent_to_ptr(array_ptr);
+
+                Ok(s)
+            }
+            ProxiedJavaValue::NativeObject(object_ptr) => {
+                let object_ptr = js_object::ptr_to_persistent(object_ptr);
+                let object = object_ptr.clone().restore(ctx).unwrap();
+                let s = Value::from_object(object);
+
+                // Prevents dropping the object
+                _ = js_object::persistent_to_ptr(object_ptr);
 
                 Ok(s)
             }

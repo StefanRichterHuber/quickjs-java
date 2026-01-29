@@ -188,6 +188,16 @@ public class QuickJSContext implements AutoCloseable {
     /**
      * Adds a global variable to the context.
      * 
+     * @param name   Name of the variable
+     * @param object QuickJSObject to be set as global variable
+     */
+    public <K, V> void setGlobal(String name, QuickJSObject<K, V> object) {
+        this.setGlobal(getContextPointer(), name, object);
+    }
+
+    /**
+     * Adds a global variable to the context.
+     * 
      * @param name  Name of the variable
      * @param value Value of the variable
      */

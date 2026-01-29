@@ -102,7 +102,10 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_s
 ) -> jboolean {
     let value = java_js_proxy::ProxiedJavaValue::from_object(&mut env, &ctx, value);
     with_array(env, array_ptr, ctx, |mut _env, _ctx, array| {
-        array.set(index as usize, value).unwrap()
+        let s: Result<(), _> = array.set(index as usize, value);
+        if s.is_err() {
+            context::handle_exception(s.err().unwrap(), &_ctx, &_obj, &mut _env);
+        }
     });
 
     true as jboolean
@@ -130,6 +133,22 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_g
     });
 
     value
+}
+
+/// Implementation of com.github.stefanrichterhuber.quickjs.QuickJSArray.removeValue
+#[no_mangle]
+pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_removeValue<'a>(
+    env: JNIEnv<'a>,
+    _obj: JObject<'a>,
+    array_ptr: jlong,
+    ctx: JObject<'a>,
+    index: jint,
+) -> jboolean {
+    let value = with_array(env, array_ptr, ctx, |mut env, _ctx, array| {
+        // TODO implement (call js function splice?)
+    });
+
+    true as jboolean
 }
 
 /// Converts a pointer to a persistent array
