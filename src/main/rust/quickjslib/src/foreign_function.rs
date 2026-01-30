@@ -65,7 +65,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSFunctio
 /// Invokes a JS function with Java parameters. All java parameters are converted to their JS representations, then the function is called.
 pub(crate) fn invoke_js_function_with_java_parameters<'a>(
     mut env: JNIEnv<'a>,
-    context: &JObject<'a>,
+    context_object: &JObject<'a>,
     func: &Function<'_>,
     parameters: JObjectArray<'a>,
 ) -> JObject<'a> {
@@ -78,7 +78,8 @@ pub(crate) fn invoke_js_function_with_java_parameters<'a>(
         let mut args = Vec::with_capacity(args_len as usize);
         for i in 0..args_len {
             let arg = env.get_object_array_element(&parameters, i).unwrap();
-            let arg_js = java_js_proxy::ProxiedJavaValue::from_object(&mut env, context, arg);
+            let arg_js =
+                java_js_proxy::ProxiedJavaValue::from_object(&mut env, context_object, arg);
             args.push(arg_js);
         }
 
@@ -93,9 +94,9 @@ pub(crate) fn invoke_js_function_with_java_parameters<'a>(
     };
 
     let result = match s {
-        Ok(s) => s.into_jobject(context, &mut env).unwrap(),
+        Ok(s) => s.into_jobject(context_object, &mut env).unwrap(),
         Err(e) => {
-            context::handle_exception(e, ctx, context, &mut env);
+            context::handle_exception(e, ctx, context_object, &mut env);
             JObject::null()
         }
     };

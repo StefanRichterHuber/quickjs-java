@@ -414,6 +414,7 @@ public class QuickJSContextTest {
      * 
      * @throws Exception
      */
+    @SuppressWarnings("resource")
     @Test
     public void jsObjectModificatonTest() throws Exception {
         try (QuickJSRuntime runtime = new QuickJSRuntime();
@@ -425,6 +426,9 @@ public class QuickJSContextTest {
             assertEquals(2, object.size());
             assertEquals(1, object.get("x"));
             assertEquals(2, object.get("y"));
+            assertTrue(object.containsKey("x"));
+            assertTrue(object.containsKey("y"));
+            assertFalse(object.containsKey("z"));
 
             object.put("z", 3);
             assertEquals(3, object.size());
@@ -447,6 +451,9 @@ public class QuickJSContextTest {
             assertEquals(2, object.size());
             assertEquals(1, object.get("x"));
             assertEquals(2, object.get("y"));
+            assertTrue(object.containsKey("x"));
+            assertTrue(object.containsKey("y"));
+            assertFalse(object.containsKey("z"));
 
             context.setGlobal("a", object);
             assertEquals(1, context.eval("a.x"));
@@ -483,6 +490,11 @@ public class QuickJSContextTest {
             assertEquals(4, context.eval("a.length"));
             assertEquals(4, context.eval("a[3]"));
             assertEquals(4, list.get(3));
+
+            list.remove(0);
+            assertEquals(3, context.eval("a.length"));
+            assertEquals(2, context.eval("a[0]"));
+            assertEquals(2, list.get(0));
         }
     }
 
@@ -518,6 +530,8 @@ public class QuickJSContextTest {
             // Array modified in js
             assertEquals(99, context.eval("a[0] = 99"));
             assertEquals(99, array.get(0));
+
+            // TODO: test removing elements
         }
 
     }

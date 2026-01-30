@@ -12,6 +12,17 @@ use log::trace;
 use rquickjs::{object::ObjectKeysIter, Ctx, Object, Persistent};
 
 /// Helper function to get a mutable reference to the object
+///
+/// # Arguments
+///
+/// * `_env` - The JNI environment
+/// * `object_ptr` - The pointer to the persistent object
+/// * `context_object` - The context object
+/// * `f` - The function to call with the object
+///
+/// # Returns
+///
+/// The result of the function
 fn with_object<'java, F, R>(
     mut _env: JNIEnv<'java>,
     object_ptr: jlong,
@@ -25,7 +36,7 @@ where
     let object_ptr = ptr_to_persistent(object_ptr);
     let context = context::get_context_from_quickjs_context(&mut _env, &context_object);
 
-    let result = context.with(|ctx| {
+    let result = context::with_context(&context, |ctx| {
         let obj = object_ptr.clone().restore(&ctx).unwrap();
         f(&mut _env, context_object, ctx, obj)
     });
@@ -39,11 +50,27 @@ where
 }
 
 /// Converts a pointer to a persistent array
+///
+/// # Arguments
+///
+/// * `array_ptr` - The pointer to the persistent array
+///
+/// # Returns
+///
+/// A persistent array
 pub(crate) fn ptr_to_persistent<'js>(array_ptr: jlong) -> Box<Persistent<Object<'static>>> {
     unsafe { Box::from_raw(array_ptr as *mut Persistent<Object<'static>>) }
 }
 
 /// Converts a persistent array to a pointer
+///
+/// # Arguments
+///
+/// * `array` - The persistent array to convert
+///
+/// # Returns
+///
+/// A pointer to the persistent array
 pub(crate) fn persistent_to_ptr<'js>(array: Box<Persistent<Object<'static>>>) -> jlong {
     Box::into_raw(array) as jlong
 }
@@ -59,7 +86,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSObject_
 ) -> jlong {
     let context = context::get_context_from_quickjs_context(&mut _env, &ctx);
 
-    let result = context.with(|ctx| {
+    let result = context::with_context(&context, |ctx| {
         let js_object = rquickjs::Object::new(ctx.clone()).unwrap();
         let persistent = Persistent::save(&ctx, js_object);
         persistent

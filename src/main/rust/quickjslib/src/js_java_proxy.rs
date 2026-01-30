@@ -191,8 +191,18 @@ impl<'js, 'vm> JSJavaProxy<'js> {
     }
 }
 
-// Creates a java.util.Set from a JS object's keys
-pub fn create_java_set_from_object_keys_iter<'js, 'vm>(
+/// Creates a java.util.Set from a JS object's keys
+///
+/// # Arguments
+///
+/// * `context` - The context object
+/// * `env` - The JNI environment
+/// * `object_keys` - The iterator over the object's keys
+///
+/// # Returns
+///
+/// A Java Set containing the object's keys
+pub(crate) fn create_java_set_from_object_keys_iter<'js, 'vm>(
     context: &JObject<'vm>,
     env: &mut JNIEnv<'vm>,
     object_keys: ObjectKeysIter<'js, JSJavaProxy<'js>>,

@@ -6,7 +6,7 @@ use jni::{
     objects::{JObject, JString},
     JNIEnv,
 };
-use log::{error, info, trace, warn};
+use log::{error, trace, warn};
 use rquickjs::function::{IntoJsFunc, ParamRequirement};
 use rquickjs::{Atom, BigInt, Exception, FromJs, Function, IntoAtom, IntoJs, Value};
 
@@ -261,9 +261,8 @@ impl ProxiedJavaValue {
             env,
             &obj,
         ) {
-            info!("Unwrap Java QuickJSArray to JS array");
             let array_ptr = env.get_field(&obj, "ptr", "J").unwrap().j().unwrap();
-            info!("Unwraped Java QuickJSArray to JS array");
+            trace!("Unwraped Java QuickJSArray to JS array");
             return ProxiedJavaValue::NativeArray(array_ptr);
         }
 
@@ -566,9 +565,8 @@ impl ProxiedJavaValue {
             env,
             &obj,
         ) {
-            info!("Unwrap Java QuickJSObject to JS object");
             let object_ptr = env.get_field(&obj, "ptr", "J").unwrap().j().unwrap();
-            info!("Unwraped Java QuickJSObject to JS object");
+            trace!("Unwraped Java QuickJSObject to JS object");
             return ProxiedJavaValue::NativeObject(object_ptr);
         }
 

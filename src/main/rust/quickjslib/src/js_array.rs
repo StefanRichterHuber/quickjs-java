@@ -9,9 +9,20 @@ use jni::{
     JNIEnv,
 };
 use log::trace;
-use rquickjs::{Array, Ctx, Persistent};
+use rquickjs::{function::This, Array, Ctx, Function, Persistent};
 
 /// Helper function to get a mutable reference to the array
+///
+/// # Arguments
+///
+/// * `_env` - The JNI environment
+/// * `array_ptr` - The pointer to the persistent array
+/// * `context_object` - The context object
+/// * `f` - The function to call with the array
+///
+/// # Returns
+///
+/// The result of the function
 fn with_array<'java, F, R>(
     mut _env: JNIEnv<'java>,
     array_ptr: jlong,
@@ -25,7 +36,7 @@ where
     let array_ptr = ptr_to_persistent(array_ptr);
     let context = context::get_context_from_quickjs_context(&mut _env, &context_object);
 
-    let result = context.with(|ctx| {
+    let result = context::with_context(&context, |ctx| {
         let array = array_ptr.clone().restore(&ctx).unwrap();
         f(&mut _env, context_object, ctx, array)
     });
@@ -49,7 +60,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_c
 ) -> jlong {
     let context = context::get_context_from_quickjs_context(&mut _env, &ctx);
 
-    let result = context.with(|ctx| {
+    let result = context::with_context(&context, |ctx| {
         let js_array = rquickjs::Array::new(ctx.clone()).unwrap();
         let persistent = Persistent::save(&ctx, js_array);
         persistent
@@ -157,24 +168,92 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_r
     context_object: JObject<'a>,
     index: jint,
 ) -> jboolean {
-    let value = with_array(
+    let result = with_array(
         env,
         array_ptr,
         context_object,
-        |mut env, ctx_object, _ctx, array| {
-            // TODO implement (call js function splice?)
+        |mut env, ctx_object, ctx, array| {
+            let result = splice_array(array, index, 1);
+            if result.is_err() {
+                context::handle_exception(result.err().unwrap(), &ctx, &ctx_object, &mut env);
+                return false as jboolean;
+            }
+            true as jboolean
         },
     );
 
-    true as jboolean
+    result
+}
+
+/// Helper function to splice an array, by calling the splice method on the array.
+///
+/// # Arguments
+///
+/// * `array` - The array to splice
+/// * `index` - The index to start splicing from
+/// * `delete_count` - The number of elements to delete
+///
+/// # Returns
+///
+/// `Ok(())` if the array was spliced successfully, `Err(e)` if the array was not spliced successfully
+fn splice_array<'js>(
+    array: Array<'js>,
+    index: i32,
+    delete_count: i32,
+) -> Result<(), rquickjs::Error> {
+    let obj = rquickjs::Value::from(array).into_object().unwrap();
+    let splice: Result<Function, _> = obj.get("splice");
+    match splice {
+        Ok(f) => {
+            let _s: rquickjs::Value = f.call((This(obj), index, delete_count))?;
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// Converts a pointer to a persistent array
+///
+/// # Arguments
+///
+/// * `array_ptr` - The pointer to the persistent array
+///
+/// # Returns
+///
+/// A persistent array
 pub(crate) fn ptr_to_persistent<'js>(array_ptr: jlong) -> Box<Persistent<Array<'static>>> {
     unsafe { Box::from_raw(array_ptr as *mut Persistent<Array<'static>>) }
 }
 
 /// Converts a persistent array to a pointer
+///
+/// # Arguments
+///
+/// * `array` - The persistent array to convert
+///
+/// # Returns
+///
+/// A pointer to the persistent array
 pub(crate) fn persistent_to_ptr<'js>(array: Box<Persistent<Array<'static>>>) -> jlong {
     Box::into_raw(array) as jlong
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    use rquickjs::{Context, Runtime};
+
+    #[test]
+    fn test_splice_array() {
+        let rt = Runtime::new().unwrap();
+        let ctx = Context::full(&rt).unwrap();
+
+        ctx.with(|ctx| {
+            let array = ctx.eval::<rquickjs::Array, _>("[1, 2, 3]").unwrap();
+            let result = splice_array(array, 0, 1);
+            assert!(result.is_ok());
+        });
+    }
 }

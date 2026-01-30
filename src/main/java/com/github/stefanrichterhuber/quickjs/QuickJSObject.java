@@ -192,7 +192,7 @@ public class QuickJSObject<K, V> implements AutoCloseable, Map<K, V> {
 
     @Override
     public boolean containsKey(Object key) {
-        return keySet(getContextPointer(), ctx).contains(key);
+        return containsKey(getContextPointer(), ctx, key);
     }
 
     @Override
