@@ -130,6 +130,34 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_s
     true as jboolean
 }
 
+/// Implementation of com.github.stefanrichterhuber.quickjs.QuickJSArray.addValue
+#[no_mangle]
+pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_addValue<'a>(
+    mut env: JNIEnv<'a>,
+    _obj: JObject<'a>,
+    array_ptr: jlong,
+    context_object: JObject<'a>,
+    index: jint,
+    value: JObject<'a>,
+) -> jboolean {
+    let value = java_js_proxy::ProxiedJavaValue::from_object(&mut env, &context_object, value);
+    let result = with_array(
+        env,
+        array_ptr,
+        context_object,
+        |mut _env, context_object, _ctx, array| {
+            let result = splice_array(array, index, 0, Some(value));
+            if result.is_err() {
+                context::handle_exception(result.err().unwrap(), &_ctx, &context_object, &mut _env);
+                return false as jboolean;
+            }
+            true as jboolean
+        },
+    );
+
+    result
+}
+
 /// Implementation of com.github.stefanrichterhuber.quickjs.QuickJSArray.getValue
 #[no_mangle]
 pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_getValue<'a>(
@@ -144,7 +172,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_g
         array_ptr,
         context_object,
         |mut env, ctx_object, _ctx, array| {
-            let s: Result<JSJavaProxy, _> = array.get(index as usize).unwrap();
+            let s: Result<JSJavaProxy, _> = array.get(index as usize);
             let value = match s {
                 Ok(s) => s.into_jobject(&ctx_object, &mut env).unwrap(),
                 Err(e) => {
@@ -173,7 +201,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_r
         array_ptr,
         context_object,
         |mut env, ctx_object, ctx, array| {
-            let result = splice_array(array, index, 1);
+            let result = splice_array(array, index, 1, None);
             if result.is_err() {
                 context::handle_exception(result.err().unwrap(), &ctx, &ctx_object, &mut env);
                 return false as jboolean;
@@ -192,6 +220,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_r
 /// * `array` - The array to splice
 /// * `index` - The index to start splicing from
 /// * `delete_count` - The number of elements to delete
+/// * `value` - The value to insert
 ///
 /// # Returns
 ///
@@ -200,16 +229,19 @@ fn splice_array<'js>(
     array: Array<'js>,
     index: i32,
     delete_count: i32,
+    value: Option<java_js_proxy::ProxiedJavaValue>,
 ) -> Result<(), rquickjs::Error> {
     let obj = rquickjs::Value::from(array).into_object().unwrap();
-    let splice: Result<Function, _> = obj.get("splice");
-    match splice {
-        Ok(f) => {
-            let _s: rquickjs::Value = f.call((This(obj), index, delete_count))?;
-            Ok(())
+    let splice: Function = obj.get("splice")?;
+    match value {
+        Some(v) => {
+            let _s: rquickjs::Value = splice.call((This(obj), index, delete_count, v))?;
         }
-        Err(e) => Err(e),
-    }
+        None => {
+            let _s: rquickjs::Value = splice.call((This(obj), index, delete_count))?;
+        }
+    };
+    Ok(())
 }
 
 /// Converts a pointer to a persistent array
@@ -252,7 +284,7 @@ mod tests {
 
         ctx.with(|ctx| {
             let array = ctx.eval::<rquickjs::Array, _>("[1, 2, 3]").unwrap();
-            let result = splice_array(array, 0, 1);
+            let result = splice_array(array, 0, 1, None);
             assert!(result.is_ok());
         });
     }

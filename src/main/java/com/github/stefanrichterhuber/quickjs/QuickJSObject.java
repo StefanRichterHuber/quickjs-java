@@ -1,51 +1,18 @@
 package com.github.stefanrichterhuber.quickjs;
 
+import java.util.AbstractMap;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public class QuickJSObject<K, V> implements AutoCloseable, Map<K, V> {
+import com.github.stefanrichterhuber.quickjs.internal.QuickJSObjectEntry;
+
+public class QuickJSObject<K, V> extends AbstractMap<K, V> {
     private static final Logger LOGGER = LogManager.getLogger();
-
-    private class QuickJSObjectEntry implements Entry<K, V> {
-        private final K key;
-
-        public QuickJSObjectEntry(K key) {
-            this.key = key;
-        }
-
-        @Override
-        public K getKey() {
-            return key;
-        }
-
-        @Override
-        public V getValue() {
-            return QuickJSObject.this.get(key);
-        }
-
-        @Override
-        public V setValue(V value) {
-            final V oldValue = getValue();
-            QuickJSObject.this.put(key, value);
-            return oldValue;
-        }
-
-        public int hashCode() {
-            final V value = this.getValue();
-            return (this.key == null ? 0 : this.key.hashCode()) ^ (value == null ? 0 : value.hashCode());
-        }
-
-        public String toString() {
-            return this.key + "=" + this.getValue();
-        }
-    }
 
     /**
      * Native pointer to js object
@@ -148,6 +115,11 @@ public class QuickJSObject<K, V> implements AutoCloseable, Map<K, V> {
         ctx.addDependentResource(this::close);
     }
 
+    /**
+     * Creates a new QuickJSObject
+     * 
+     * @param ctx QuickJSContext this object is bound to
+     */
     public QuickJSObject(final QuickJSContext ctx) {
         if (ctx == null) {
             throw new NullPointerException("Context must not be null");
@@ -158,6 +130,12 @@ public class QuickJSObject<K, V> implements AutoCloseable, Map<K, V> {
         ctx.addDependentResource(this::close);
     }
 
+    /**
+     * Creates a new QuickJSObject from a Map
+     * 
+     * @param ctx QuickJSContext this object is bound to
+     * @param src Map to copy values from
+     */
     public QuickJSObject(final QuickJSContext ctx, final Map<K, V> src) {
         this(ctx);
         this.putAll(src);
@@ -176,18 +154,12 @@ public class QuickJSObject<K, V> implements AutoCloseable, Map<K, V> {
         return this.ptr;
     }
 
-    @Override
-    public void close() throws Exception {
+    private void close() throws Exception {
         if (this.ptr != 0) {
             closeObject(ptr);
             LOGGER.debug("Closed JSObject with id {}", ptr);
             ptr = 0;
         }
-    }
-
-    @Override
-    public void clear() {
-        keySet().forEach(this::remove);
     }
 
     @Override
@@ -208,7 +180,7 @@ public class QuickJSObject<K, V> implements AutoCloseable, Map<K, V> {
      */
     @Override
     public Set<Entry<K, V>> entrySet() {
-        return keySet().stream().map(QuickJSObjectEntry::new).collect(Collectors.toSet());
+        return keySet().stream().map(k -> new QuickJSObjectEntry<>(this, k)).collect(Collectors.toSet());
     }
 
     @Override
@@ -239,16 +211,6 @@ public class QuickJSObject<K, V> implements AutoCloseable, Map<K, V> {
     }
 
     @Override
-    public void putAll(Map<? extends K, ? extends V> m) {
-        if (m == null) {
-            throw new NullPointerException("Map must not be null");
-        }
-        for (Entry<? extends K, ? extends V> entry : m.entrySet()) {
-            this.put(entry.getKey(), entry.getValue());
-        }
-    }
-
-    @Override
     public V remove(Object key) {
         V value = get(key);
         removeValue(getContextPointer(), ctx, key);
@@ -268,50 +230,7 @@ public class QuickJSObject<K, V> implements AutoCloseable, Map<K, V> {
      */
     @Override
     public Collection<V> values() {
-        new HashMap<>().hashCode();
         return entrySet().stream().map(Entry::getValue).collect(Collectors.toList());
-    }
-
-    @Override
-    public int hashCode() {
-        int hashCode = 1;
-
-        for (Entry<K, V> e : entrySet()) {
-            hashCode = 31 * hashCode + (e == null ? 0 : e.hashCode());
-        }
-
-        return hashCode;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        // Stolen from java.util.ArrayList
-        if (o == this) {
-            return true;
-        } else if (!(o instanceof Map)) {
-            return false;
-        } else {
-            new HashMap<>();
-            Map other = (Map) o;
-
-            if (other.size() != this.size()) {
-                return false;
-            }
-
-            for (Entry<K, V> entry : entrySet()) {
-                final K key = entry.getKey();
-                final V value = entry.getValue();
-                if (!other.containsKey(key) || !Objects.equals(other.get(key), value)) {
-                    return false;
-                }
-            }
-            return true;
-        }
-    }
-
-    @Override
-    public String toString() {
-        return entrySet().toString();
     }
 
 }

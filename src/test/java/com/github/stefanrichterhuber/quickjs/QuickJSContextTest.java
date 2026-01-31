@@ -409,6 +409,40 @@ public class QuickJSContextTest {
         }
     }
 
+    @Test
+    public void sublistTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            Object result = context.eval("[1, 2, 3 ,4 ,5, 6, 7];");
+            assertInstanceOf(List.class, result);
+            assertEquals(7, ((List<?>) result).size());
+            assertEquals(1, ((List<?>) result).get(0));
+            assertEquals(2, ((List<?>) result).get(1));
+            assertEquals(3, ((List<?>) result).get(2));
+            assertEquals(4, ((List<?>) result).get(3));
+            assertEquals(5, ((List<?>) result).get(4));
+            assertEquals(6, ((List<?>) result).get(5));
+            assertEquals(7, ((List<?>) result).get(6));
+
+            // First sublist
+            List<?> sublist = ((List<?>) result).subList(2, 5);
+            assertEquals(3, sublist.size());
+            assertEquals(3, sublist.get(0));
+            assertEquals(4, sublist.get(1));
+            assertEquals(5, sublist.get(2));
+            String s = sublist.toString();
+            assertEquals("[3, 4, 5]", s);
+
+            // Sub list of sublist
+            List<?> subsublist = sublist.subList(1, 2);
+            assertEquals(1, subsublist.size());
+            assertEquals(4, subsublist.get(0));
+            String s2 = subsublist.toString();
+            assertEquals("[4]", s2);
+        }
+    }
+
     /**
      * Creates an object on the js side and modifies it from the java side
      * 
@@ -495,6 +529,11 @@ public class QuickJSContextTest {
             assertEquals(3, context.eval("a.length"));
             assertEquals(2, context.eval("a[0]"));
             assertEquals(2, list.get(0));
+
+            list.add(1, 99);
+            assertEquals(4, context.eval("a.length"));
+            assertEquals(99, context.eval("a[1]"));
+            assertEquals(99, list.get(1));
         }
     }
 
@@ -531,7 +570,6 @@ public class QuickJSContextTest {
             assertEquals(99, context.eval("a[0] = 99"));
             assertEquals(99, array.get(0));
 
-            // TODO: test removing elements
         }
 
     }
