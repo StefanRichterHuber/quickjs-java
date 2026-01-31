@@ -8,10 +8,12 @@ use jni::{
 };
 use log::{error, trace, warn};
 use rquickjs::function::{IntoJsFunc, ParamRequirement};
-use rquickjs::{BigInt, Exception, FromJs, Function, IntoJs, Value};
+use rquickjs::{Atom, BigInt, Exception, FromJs, Function, IntoAtom, IntoJs, Value};
 
 use crate::foreign_function::{function_to_ptr, ptr_to_function};
+use crate::js_array::{persistent_to_ptr, ptr_to_persistent};
 use crate::js_java_proxy::JSJavaProxy;
+use crate::js_object;
 
 /// Type for the function called with the iterator_collect method
 ///
@@ -111,6 +113,8 @@ pub enum ProxiedJavaValue {
     Map(Vec<(String, ProxiedJavaValue)>),
     JSFunction(i64),
     Array(Vec<ProxiedJavaValue>),
+    NativeArray(i64),
+    NativeObject(i64),
 }
 
 impl ProxiedJavaValue {
@@ -251,6 +255,17 @@ impl ProxiedJavaValue {
         context: &JObject<'vm>,
         obj: JObject<'vm>,
     ) -> Self {
+        // Check if the iterable is actually a QuickJSArray (wrapping a native JS array)
+        if ProxiedJavaValue::is_instance_of(
+            "com/github/stefanrichterhuber/quickjs/QuickJSArray",
+            env,
+            &obj,
+        ) {
+            let array_ptr = env.get_field(&obj, "ptr", "J").unwrap().j().unwrap();
+            trace!("Unwraped Java QuickJSArray to JS array");
+            return ProxiedJavaValue::NativeArray(array_ptr);
+        }
+
         trace!("Create JS array from Java java.lang.Iterable");
 
         // Create an iterator over all results
@@ -544,6 +559,17 @@ impl ProxiedJavaValue {
 
     /// Converts a Java java.util.Map into a js object
     fn from_map<'vm>(env: &mut JNIEnv<'vm>, context: &JObject<'vm>, obj: JObject<'vm>) -> Self {
+        // Check if the iterable is actually a QuickJSObject (wrapping a native JS object)
+        if ProxiedJavaValue::is_instance_of(
+            "com/github/stefanrichterhuber/quickjs/QuickJSObject",
+            env,
+            &obj,
+        ) {
+            let object_ptr = env.get_field(&obj, "ptr", "J").unwrap().j().unwrap();
+            trace!("Unwraped Java QuickJSObject to JS object");
+            return ProxiedJavaValue::NativeObject(object_ptr);
+        }
+
         trace!("Copy Java Map<Object, Object> to JS object",);
 
         // Iterate over all items
@@ -664,13 +690,27 @@ impl ProxiedJavaValue {
     }
 }
 
+impl<'js> IntoAtom<'js> for ProxiedJavaValue {
+    /// Converts a ProxiedJavaValue into an Atom within the given JS context, if possible.
+    ///
+    /// Only `String`, `Int`, `Double` and `Bool` are supported.
+    fn into_atom(self, ctx: &rquickjs::Ctx<'js>) -> rquickjs::Result<Atom<'js>> {
+        match self {
+            ProxiedJavaValue::String(value) => Atom::from_str(ctx.clone(), &value),
+            ProxiedJavaValue::Int(value) => Atom::from_i32(ctx.clone(), value),
+            ProxiedJavaValue::Double(value) => Atom::from_f64(ctx.clone(), value),
+            ProxiedJavaValue::Bool(value) => Atom::from_bool(ctx.clone(), value),
+            _ => Err(rquickjs::Error::Exception),
+        }
+    }
+}
+
 impl<'js> IntoJs<'js> for ProxiedJavaValue {
     /// Converts a ProxiedJavaValue into a JS value within the given JS context.
     fn into_js(self, ctx: &rquickjs::Ctx<'js>) -> rquickjs::Result<Value<'js>> {
         let result = match self {
             ProxiedJavaValue::Throwable(msg, class_name, file, line) => {
-                let exception = 
-                    Exception::from_message(ctx.clone(), &msg).unwrap();
+                let exception = Exception::from_message(ctx.clone(), &msg).unwrap();
                 exception
                     .set("original_java_exception_class", class_name)
                     .unwrap();
@@ -694,7 +734,6 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
                 s
             }
             ProxiedJavaValue::BigInteger(v) => {
-                // FIXME BigInteger currently not supported by rquickjs
                 let bi = BigInt::from_i64(ctx.clone(), v).unwrap();
                 let s = Value::from_big_int(bi);
                 Ok(s)
@@ -749,6 +788,26 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
             ProxiedJavaValue::VarFunction(f) => {
                 let func = Function::new::<JObject, VariadicFunction>(ctx.clone(), f).unwrap();
                 let s = Value::from_function(func);
+                Ok(s)
+            }
+            ProxiedJavaValue::NativeArray(array_ptr) => {
+                let array_ptr = ptr_to_persistent(array_ptr);
+                let array = array_ptr.clone().restore(ctx).unwrap();
+                let s = Value::from_array(array);
+
+                // Prevents dropping the array
+                _ = persistent_to_ptr(array_ptr);
+
+                Ok(s)
+            }
+            ProxiedJavaValue::NativeObject(object_ptr) => {
+                let object_ptr = js_object::ptr_to_persistent(object_ptr);
+                let object = object_ptr.clone().restore(ctx).unwrap();
+                let s = Value::from_object(object);
+
+                // Prevents dropping the object
+                _ = js_object::persistent_to_ptr(object_ptr);
+
                 Ok(s)
             }
         };

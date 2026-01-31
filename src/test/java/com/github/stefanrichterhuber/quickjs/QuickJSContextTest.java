@@ -409,6 +409,184 @@ public class QuickJSContextTest {
         }
     }
 
+    @Test
+    public void sublistTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            Object result = context.eval("[1, 2, 3 ,4 ,5, 6, 7];");
+            assertInstanceOf(List.class, result);
+            assertEquals(7, ((List<?>) result).size());
+            assertEquals(1, ((List<?>) result).get(0));
+            assertEquals(2, ((List<?>) result).get(1));
+            assertEquals(3, ((List<?>) result).get(2));
+            assertEquals(4, ((List<?>) result).get(3));
+            assertEquals(5, ((List<?>) result).get(4));
+            assertEquals(6, ((List<?>) result).get(5));
+            assertEquals(7, ((List<?>) result).get(6));
+
+            // First sublist
+            List<?> sublist = ((List<?>) result).subList(2, 5);
+            assertEquals(3, sublist.size());
+            assertEquals(3, sublist.get(0));
+            assertEquals(4, sublist.get(1));
+            assertEquals(5, sublist.get(2));
+            String s = sublist.toString();
+            assertEquals("[3, 4, 5]", s);
+
+            // Sub list of sublist
+            List<?> subsublist = sublist.subList(1, 2);
+            assertEquals(1, subsublist.size());
+            assertEquals(4, subsublist.get(0));
+            String s2 = subsublist.toString();
+            assertEquals("[4]", s2);
+        }
+    }
+
+    /**
+     * Creates an object on the js side and modifies it from the java side
+     * 
+     * @throws Exception
+     */
+    @SuppressWarnings("resource")
+    @Test
+    public void jsObjectModificatonTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            Object result = context.eval("let a = {x: 1, y: 2}; a");
+            assertInstanceOf(QuickJSObject.class, result);
+            QuickJSObject<String, Integer> object = (QuickJSObject<String, Integer>) result;
+            assertEquals(2, object.size());
+            assertEquals(1, object.get("x"));
+            assertEquals(2, object.get("y"));
+            assertTrue(object.containsKey("x"));
+            assertTrue(object.containsKey("y"));
+            assertFalse(object.containsKey("z"));
+
+            object.put("z", 3);
+            assertEquals(3, object.size());
+            assertEquals(3, context.eval("a.z"));
+
+            context.eval("delete a.x;");
+            assertFalse(object.containsKey("x"));
+
+        }
+    }
+
+    @Test
+    public void javaObjectModificatonTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            QuickJSObject<String, Integer> object = new QuickJSObject<>(context);
+            object.put("x", 1);
+            object.put("y", 2);
+            assertEquals(2, object.size());
+            assertEquals(1, object.get("x"));
+            assertEquals(2, object.get("y"));
+            assertTrue(object.containsKey("x"));
+            assertTrue(object.containsKey("y"));
+            assertFalse(object.containsKey("z"));
+
+            context.setGlobal("a", object);
+            assertEquals(1, context.eval("a.x"));
+            assertEquals(2, context.eval("a.y"));
+
+            context.eval("a.z = 3;");
+            assertEquals(3, object.get("z"));
+
+            object.remove("y");
+            assertFalse(object.containsKey("y"));
+
+        }
+    }
+
+    /**
+     * Creates a list on the js side and modifies it from the java side
+     * 
+     * @throws Exception
+     */
+    @Test
+    public void jsListModificationTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            Object result = context.eval("let a = [1, 2, 3]; a");
+            assertInstanceOf(List.class, result);
+            List<Integer> list = (List<Integer>) result;
+            assertEquals(3, list.size());
+            assertEquals(1, list.get(0));
+            assertEquals(2, list.get(1));
+            assertEquals(3, list.get(2));
+
+            list.add(4);
+            assertEquals(4, context.eval("a.length"));
+            assertEquals(4, context.eval("a[3]"));
+            assertEquals(4, list.get(3));
+
+            list.remove(0);
+            assertEquals(3, context.eval("a.length"));
+            assertEquals(2, context.eval("a[0]"));
+            assertEquals(2, list.get(0));
+
+            list.add(1, 99);
+            assertEquals(4, context.eval("a.length"));
+            assertEquals(99, context.eval("a[1]"));
+            assertEquals(99, list.get(1));
+        }
+    }
+
+    /**
+     * Creates a list on the java side and modifies it from the js side
+     * 
+     * @throws Exception
+     */
+    @Test
+    public void javaListModificationTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            QuickJSArray<Integer> array = new QuickJSArray<>(context);
+
+            array.add(1);
+            array.add(2);
+            array.add(3);
+            context.setGlobal("a", array);
+
+            assertEquals(3, context.eval("a.length"));
+            assertEquals(1, context.eval("a[0]"));
+            assertEquals(2, context.eval("a[1]"));
+            assertEquals(3, context.eval("a[2]"));
+
+            array.set(0, 4);
+            assertEquals(4, context.eval("a[0]"));
+
+            array.add(5);
+            assertEquals(4, context.eval("a.length"));
+            assertEquals(5, context.eval("a[3]"));
+
+            // Array modified in js
+            assertEquals(99, context.eval("a[0] = 99"));
+            assertEquals(99, array.get(0));
+
+        }
+
+    }
+
+    @Test
+    public void nestedListTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+            Object result = context.eval("let a = ['a', 21, ['x', 'y', 'z']]; a");
+            assertInstanceOf(List.class, result);
+            assertEquals(3, ((List<?>) result).size());
+            assertEquals("a", ((List<?>) result).get(0));
+            assertEquals(21, ((List<?>) result).get(1));
+            assertEquals(List.of("x", "y", "z"), ((List<?>) result).get(2));
+        }
+    }
+
     /**
      * Java Maps could be mapped to JS objects. Key type must be string, value
      * supports all supported java types (simple
@@ -493,6 +671,15 @@ public class QuickJSContextTest {
                 // assertEquals(2.7, m.get("b"));
                 assertEquals(true, m.get("c"));
                 assertEquals("hello", m.get("d"));
+            }
+            // Simple nested maps
+            {
+                Object v = context.eval("({a: {c: 'Hello'}})");
+                assertNotNull(v);
+                assertInstanceOf(Map.class, v);
+                Map<String, Object> m = (Map<String, Object>) v;
+                Map<String, Object> a = (Map<String, Object>) m.get("a");
+                assertEquals("Hello", a.get("c"));
             }
             // Nested maps in maps
             {

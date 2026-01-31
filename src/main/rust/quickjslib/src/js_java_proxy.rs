@@ -1,9 +1,13 @@
 use jni::objects::JValue;
 use jni::{objects::JObject, signature::ReturnType, sys::jlong, JNIEnv};
-use log::error;
 use log::trace;
+use log::{debug, error};
 use rquickjs::atom::PredefinedAtom;
-use rquickjs::{FromJs, Value};
+use rquickjs::object::ObjectKeysIter;
+use rquickjs::{Atom, FromAtom, FromJs, Persistent, Value};
+
+use crate::js_array;
+use crate::js_object;
 
 /// This proxy assist in converting JS values to Java values
 pub struct JSJavaProxy<'js> {
@@ -13,6 +17,12 @@ pub struct JSJavaProxy<'js> {
 impl<'js> FromJs<'js> for JSJavaProxy<'js> {
     fn from_js(_ctx: &rquickjs::Ctx<'js>, value: Value<'js>) -> rquickjs::Result<Self> {
         Ok(JSJavaProxy::new(value))
+    }
+}
+
+impl<'js> FromAtom<'js> for JSJavaProxy<'js> {
+    fn from_atom(atom: Atom<'js>) -> rquickjs::Result<Self> {
+        Ok(JSJavaProxy::new(atom.to_value()?))
     }
 }
 
@@ -27,7 +37,6 @@ impl<'js, 'vm> JSJavaProxy<'js> {
     pub fn into_jobject(
         self,
         context: &JObject<'vm>,
-
         env: &mut JNIEnv<'vm>,
     ) -> Option<JObject<'vm>> {
         if self.value.is_null() {
@@ -37,39 +46,29 @@ impl<'js, 'vm> JSJavaProxy<'js> {
             trace!("Map JS undefined to Java null");
             Some(JObject::null())
         } else if self.value.is_array() {
-            trace!("Map JS array to Java java.util.ArrayList",);
-            let array = self.value.as_array().unwrap();
-            let len = array.len() as i32;
+            trace!("Map JS array to Java com.github.stefanrichterhuber.quickjs.QuickJSArray");
 
-            let list_class = env
-                .find_class("java/util/ArrayList")
+            let quickjs_array_class = env
+                .find_class("com/github/stefanrichterhuber/quickjs/QuickJSArray")
                 .expect("Failed to load the target class");
-            let list = env
-                .new_object(list_class, "(I)V", &[jni::objects::JValueGen::Int(len)])
+
+            let array = self.value.into_array().unwrap();
+            let ctx = array.ctx().clone();
+            let persistent = Persistent::save(&ctx, array);
+            let array_ptr = js_array::persistent_to_ptr(Box::new(persistent));
+
+            let quickjs_array = env
+                .new_object(
+                    quickjs_array_class,
+                    "(JLcom/github/stefanrichterhuber/quickjs/QuickJSContext;)V",
+                    &[
+                        jni::objects::JValueGen::Long(array_ptr as jlong),
+                        jni::objects::JValueGen::Object(context),
+                    ],
+                )
                 .unwrap();
 
-            let add_id = env
-                .get_method_id("java/util/ArrayList", "add", "(Ljava/lang/Object;)Z")
-                .unwrap();
-
-            for value in array.iter::<JSJavaProxy>() {
-                let value = value.unwrap();
-                let value = value.into_jobject(context, env);
-
-                if let Some(v) = value {
-                    unsafe {
-                        env.call_method_unchecked(
-                            &list,
-                            add_id,
-                            ReturnType::Primitive(jni::signature::Primitive::Boolean),
-                            &[JValue::Object(&v).as_jni()],
-                        )
-                        .unwrap()
-                    };
-                }
-            }
-
-            Some(list)
+            Some(quickjs_array)
         } else if self.value.is_function() {
             let f = self.value.as_function().unwrap();
             let f = f.clone();
@@ -109,43 +108,29 @@ impl<'js, 'vm> JSJavaProxy<'js> {
                 }
             }
         } else if self.value.is_object() {
-            trace!("Map JS object to Java java.util.HashMap",);
-            let obj = self.value.as_object().unwrap();
+            debug!("Map JS object to Java com.github.stefanrichterhuber.quickjs.QuickJSObject");
 
-            let hash_map_class = env
-                .find_class("java/util/HashMap")
+            let quickjs_object_class = env
+                .find_class("com/github/stefanrichterhuber/quickjs/QuickJSObject")
                 .expect("Failed to load the target class");
 
-            let hash_map = env.new_object(hash_map_class, "()V", &[]).unwrap();
+            let object = self.value.into_object().unwrap();
+            let ctx = object.ctx().clone();
+            let persistent = Persistent::save(&ctx, object);
+            let object_ptr = js_object::persistent_to_ptr(Box::new(persistent));
 
-            // Determines the method id of the Map.put(K, V) method for better performance
-            let put_id = env
-                .get_method_id(
-                    "java/util/HashMap",
-                    "put",
-                    "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;",
+            let quickjs_object = env
+                .new_object(
+                    quickjs_object_class,
+                    "(JLcom/github/stefanrichterhuber/quickjs/QuickJSContext;)V",
+                    &[
+                        jni::objects::JValueGen::Long(object_ptr as jlong),
+                        jni::objects::JValueGen::Object(context),
+                    ],
                 )
                 .unwrap();
 
-            for v in obj.keys() {
-                let key: String = v.unwrap();
-                let k = env.new_string(&key).unwrap();
-                let value: JSJavaProxy = obj.get(key.as_str()).unwrap();
-                let value = value.into_jobject(context, env);
-
-                if let Some(v) = value {
-                    unsafe {
-                        env.call_method_unchecked(
-                            &hash_map,
-                            put_id,
-                            ReturnType::Object,
-                            &[JValue::Object(&k).as_jni(), JValue::Object(&v).as_jni()],
-                        )
-                        .unwrap()
-                    };
-                }
-            }
-            return Some(hash_map);
+            return Some(quickjs_object);
         } else if self.value.is_float() {
             trace!("Map JS float to Java java.lang.Double",);
 
@@ -204,4 +189,48 @@ impl<'js, 'vm> JSJavaProxy<'js> {
             return None;
         }
     }
+}
+
+/// Creates a java.util.Set from a JS object's keys
+///
+/// # Arguments
+///
+/// * `context` - The context object
+/// * `env` - The JNI environment
+/// * `object_keys` - The iterator over the object's keys
+///
+/// # Returns
+///
+/// A Java Set containing the object's keys
+pub(crate) fn create_java_set_from_object_keys_iter<'js, 'vm>(
+    context: &JObject<'vm>,
+    env: &mut JNIEnv<'vm>,
+    object_keys: ObjectKeysIter<'js, JSJavaProxy<'js>>,
+) -> JObject<'vm> {
+    let set_class = env
+        .find_class("java/util/HashSet")
+        .expect("Failed to load the target class");
+
+    let set = env.new_object(&set_class, "()V", &[]).unwrap();
+    let add_id = env
+        .get_method_id(&set_class, "add", "(Ljava/lang/Object;)Z")
+        .unwrap();
+
+    for key in object_keys.into_iter() {
+        let key: JSJavaProxy = key.unwrap();
+        let key_value = key.into_jobject(context, env).unwrap();
+        // Call HashSet.add(Object)
+
+        unsafe {
+            env.call_method_unchecked(
+                &set,
+                add_id,
+                ReturnType::Primitive(jni::signature::Primitive::Boolean),
+                &[JValue::Object(&key_value).as_jni()],
+            )
+            .unwrap()
+        };
+    }
+
+    set
 }

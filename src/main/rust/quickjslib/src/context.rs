@@ -11,7 +11,54 @@ use jni::{
 use log::trace;
 use log::{debug, warn};
 use rquickjs::atom::PredefinedAtom;
-use rquickjs::{Context, Error, Value};
+use rquickjs::{Context, Ctx, Error, Value};
+use std::cell::RefCell;
+
+thread_local! {
+    static CONTEXT_STACK: RefCell<Vec<(jlong, Ctx<'static>)>> = RefCell::new(Vec::new());
+}
+
+/// Helper function to get a Ctx from a Context, handling re-entrancy.
+pub(crate) fn with_context<F, R>(context: &Context, f: F) -> R
+where
+    F: FnOnce(Ctx) -> R,
+{
+    let context_ptr = context as *const _ as jlong;
+
+    // Check if context is already in stack (search reverse)
+    let existing_ctx = CONTEXT_STACK.with(|stack| {
+        stack
+            .borrow()
+            .iter()
+            .rev()
+            .find(|(ptr, _)| *ptr == context_ptr)
+            .map(|(_, ctx)| ctx.clone())
+    });
+
+    if let Some(ctx) = existing_ctx {
+        // Transmute 'static Ctx to 'current Ctx
+        // This is safe because we know the context is alive (we have &Context) and we are on the same thread.
+        // And if we are re-entering, the original scope that created the Ctx is still active on the stack.
+        let ctx: Ctx = unsafe { std::mem::transmute(ctx) };
+        return f(ctx);
+    }
+
+    context.with(|ctx| {
+        let static_ctx: Ctx<'static> = unsafe { std::mem::transmute(ctx.clone()) };
+        CONTEXT_STACK.with(|stack| stack.borrow_mut().push((context_ptr, static_ctx)));
+
+        // Use a guard to ensure pop happens even if f panics
+        struct ContextGuard;
+        impl Drop for ContextGuard {
+            fn drop(&mut self) {
+                CONTEXT_STACK.with(|stack| stack.borrow_mut().pop());
+            }
+        }
+        let _guard = ContextGuard;
+
+        f(ctx)
+    })
+}
 
 // ---------------------- com.github.stefanrichterhuber.quickjs.QuickJSContext
 /// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.createContext(long ptr)
@@ -34,11 +81,11 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
 }
 
 /// Converts a pointer to a context back to a Box<Context>.
-fn ptr_to_context(context_ptr: jlong) -> Box<Context> {
+pub(crate) fn ptr_to_context(context_ptr: jlong) -> Box<Context> {
     unsafe { Box::from_raw(context_ptr as *mut Context) }
 }
 
-fn context_to_ptr(context: Box<Context>) -> jlong {
+pub(crate) fn context_to_ptr(context: Box<Context>) -> jlong {
     Box::into_raw(context) as jlong
 }
 
@@ -47,7 +94,7 @@ fn context_to_ptr(context: Box<Context>) -> jlong {
 pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext_closeContext<
     'a,
 >(
-    mut _env: JNIEnv<'a>,
+    mut _env: &mut JNIEnv<'a>,
     _obj: JObject<'a>,
     context_ptr: jlong,
 ) {
@@ -70,7 +117,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
         .expect("Couldn't get java string!")
         .into();
 
-    let result = context.with(|ctx| {
+    let result = with_context(&context, |ctx| {
         let globals = ctx.globals();
         let s: Result<JSJavaProxy, _> = globals.get(&key_string);
 
@@ -89,6 +136,15 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
     result
 }
 
+/// Extracts the context from a java QuickJSContext object
+pub(crate) fn get_context_from_quickjs_context<'a>(
+    env: &mut JNIEnv<'a>,
+    ctx: &JObject<'a>,
+) -> Box<Context> {
+    let context_ptr = env.get_field(ctx, "ptr", "J").unwrap().j().unwrap();
+    ptr_to_context(context_ptr)
+}
+
 /// Handle JS errors. Extracts the message and throws a Java exception..
 pub(crate) fn handle_exception<'vm>(
     e: Error,
@@ -101,7 +157,6 @@ pub(crate) fn handle_exception<'vm>(
             let catch = js_context.catch();
             if let Some(execp) = catch.as_exception() {
                 let file_name = JObject::null();
-
 
                 let stack_trace = if let Some(stack) = execp.stack() {
                     env.new_string(stack).unwrap().into()
@@ -225,7 +280,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
         .into();
     let value = ProxiedJavaValue::from_object(&mut _env, &_obj, value);
 
-    context.with(|ctx| {
+    with_context(&context, |ctx| {
         let globals = ctx.globals();
         let s = globals.set(&key_string, value);
 
@@ -265,7 +320,7 @@ pub(crate) fn eval<'a, S: Into<Vec<u8>>>(
     let context = ptr_to_context(context_ptr);
     let locale = with_locale::TemporaryLocale::new_default();
 
-    let result = context.with(move |ctx| {
+    let result = with_context(&context, move |ctx| {
         let s: Result<JSJavaProxy, _> = locale.with(|| ctx.eval(script));
 
         match s {
@@ -311,7 +366,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
 #[no_mangle]
 pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext_invoke<'a>(
     mut _env: JNIEnv<'a>,
-    obj: JObject<'a>,
+    context_object: JObject<'a>,
     context_ptr: jlong,
     name: JString<'a>,
     args: JObjectArray<'a>,
@@ -322,7 +377,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
         .expect("Couldn't get java string!")
         .into();
 
-    let r = context.with(move |ctx| {
+    let r = with_context(&context, move |ctx| {
         let globals = ctx.globals();
         let f: Result<rquickjs::Value, _> = if function_name.contains('.') {
             let parts = function_name.split('.').collect::<Vec<&str>>();
@@ -345,7 +400,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
                         }
                     }
                     Err(e) => {
-                        handle_exception(e, &ctx, &obj, &mut _env);
+                        handle_exception(e, &ctx, &context_object, &mut _env);
                         return JObject::null();
                     }
                 }
@@ -363,7 +418,10 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
                     trace!("Invoking JS function with name {}()", function_name);
                     let func = f.as_function().unwrap();
                     let result = foreign_function::invoke_js_function_with_java_parameters(
-                        _env, &obj, func, args,
+                        _env,
+                        &context_object,
+                        func,
+                        args,
                     );
                     result
                 } else {
@@ -376,7 +434,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
                 }
             }
             Err(e) => {
-                handle_exception(e, &ctx, &obj, &mut _env);
+                handle_exception(e, &ctx, &context_object, &mut _env);
                 JObject::null()
             }
         }
