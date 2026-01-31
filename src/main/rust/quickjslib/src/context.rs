@@ -60,10 +60,10 @@ where
     })
 }
 
-// ---------------------- com.github.stefanrichterhuber.quickjs.QuickJSContext
-/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.createContext(long ptr)
+// ---------------------- io.github.stefanrichterhuber.quickjs.QuickJSContext
+/// Implementation io.github.stefanrichterhuber.quickjs.QuickJSContext.createContext(long ptr)
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext_createContext<
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSContext_createContext<
     'a,
 >(
     mut _env: JNIEnv<'a>,
@@ -89,11 +89,9 @@ pub(crate) fn context_to_ptr(context: Box<Context>) -> jlong {
     Box::into_raw(context) as jlong
 }
 
-/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.closeContext(long)
+/// Implementation io.github.stefanrichterhuber.quickjs.QuickJSContext.closeContext(long)
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext_closeContext<
-    'a,
->(
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSContext_closeContext<'a>(
     mut _env: &mut JNIEnv<'a>,
     _obj: JObject<'a>,
     context_ptr: jlong,
@@ -103,9 +101,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
     drop(context);
 }
 
-/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.getGlobal(long, String)
+/// Implementation io.github.stefanrichterhuber.quickjs.QuickJSContext.getGlobal(long, String)
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext_getGlobal<'a>(
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSContext_getGlobal<'a>(
     mut _env: JNIEnv<'a>,
     _obj: JObject<'a>,
     context_ptr: jlong,
@@ -224,7 +222,7 @@ pub(crate) fn handle_exception<'vm>(
 
                 // Then generate the actual exception
                 let exception_class = env
-                    .find_class("com/github/stefanrichterhuber/quickjs/QuickJSScriptException")
+                    .find_class("io/github/stefanrichterhuber/quickjs/QuickJSScriptException")
                     .unwrap();
 
                 let exception_object:JThrowable = env.new_object(
@@ -241,13 +239,13 @@ pub(crate) fn handle_exception<'vm>(
                 env.throw(exception_object).unwrap();
             } else if let Some(msg) = catch.as_string() {
                 env.throw_new(
-                    "com/github/stefanrichterhuber/quickjs/QuickJSScriptException",
+                    "io/github/stefanrichterhuber/quickjs/QuickJSScriptException",
                     msg.to_string().unwrap(),
                 )
                 .unwrap();
             } else {
                 env.throw_new(
-                    "com/github/stefanrichterhuber/quickjs/QuickJSScriptException",
+                    "io/github/stefanrichterhuber/quickjs/QuickJSScriptException",
                     "Unknown type of JS Error::Exception",
                 )
                 .unwrap();
@@ -255,16 +253,16 @@ pub(crate) fn handle_exception<'vm>(
         }
         _ => env
             .throw_new(
-                "com/github/stefanrichterhuber/quickjs/QuickJSScriptException",
+                "io/github/stefanrichterhuber/quickjs/QuickJSScriptException",
                 e.to_string(),
             )
             .unwrap(),
     }
 }
 
-/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.setGlobal(long, String, Object)
+/// Implementation io.github.stefanrichterhuber.quickjs.QuickJSContext.setGlobal(long, String, Object)
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext_setGlobal__JLjava_lang_String_2Ljava_lang_Object_2<
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSContext_setGlobal__JLjava_lang_String_2Ljava_lang_Object_2<
     'a,
 >(
     mut _env: JNIEnv<'a>,
@@ -295,9 +293,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
     _ = context_to_ptr(context);
 }
 
-/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.eval(long, String)
+/// Implementation io.github.stefanrichterhuber.quickjs.QuickJSContext.eval(long, String)
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext_eval<'a>(
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSContext_eval<'a>(
     mut _env: JNIEnv<'a>,
     _obj: JObject<'a>,
     context_ptr: jlong,
@@ -338,9 +336,9 @@ pub(crate) fn eval<'a, S: Into<Vec<u8>>>(
     result
 }
 
-/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.evalBuffer(long, ByteBuffer)
+/// Implementation io.github.stefanrichterhuber.quickjs.QuickJSContext.evalBuffer(long, ByteBuffer)
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext_evalBuffer<'a>(
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSContext_evalBuffer<'a>(
     mut _env: JNIEnv<'a>,
     _obj: JObject<'a>,
     context_ptr: jlong,
@@ -362,9 +360,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext
     result
 }
 
-/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSContext.invoke(long, String, Object... args)
+/// Implementation io.github.stefanrichterhuber.quickjs.QuickJSContext.invoke(long, String, Object... args)
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSContext_invoke<'a>(
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSContext_invoke<'a>(
     mut _env: JNIEnv<'a>,
     context_object: JObject<'a>,
     context_ptr: jlong,

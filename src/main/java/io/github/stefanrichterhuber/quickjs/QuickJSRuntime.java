@@ -1,4 +1,4 @@
-package com.github.stefanrichterhuber.quickjs;
+package io.github.stefanrichterhuber.quickjs;
 
 import java.lang.ref.Cleaner;
 import java.lang.ref.Cleaner.Cleanable;
@@ -69,7 +69,7 @@ public class QuickJSRuntime implements AutoCloseable {
         JarJniLoader.loadLib(
                 QuickJSRuntime.class,
                 // A platform-specific path is automatically suffixed to path below.
-                "/com/github/stefanrichterhuber/quickjs/libs",
+                "/io/github/stefanrichterhuber/quickjs/libs",
                 // The "lib" prefix and ".so|.dynlib|.dll" suffix are added automatically as
                 // needed.
                 "javaquickjs");

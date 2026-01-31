@@ -40,7 +40,7 @@ Import library
 
 ```xml
 <dependency>
-    <groupId>com.github.stefanrichterhuber</groupId>
+    <groupId>io.github.stefanrichterhuber</groupId>
     <artifactId>quickjs-Java</artifactId>
     <version>[current version]</version>
 </dependency>
@@ -87,11 +87,12 @@ try (QuickJSRuntime runtime = new QuickJSRuntime(); // A QuickJSRuntime manages 
 }
 ```
 
-For further examples look at `com.github.stefanrichterhuber.quickjs.QuickJSContextTest`.
+For further examples look at `io.github.stefanrichterhuber.quickjs.QuickJSContextTest`.
+
 
 ### Supported types
 
-The rust library seamlessly translates all supported Java types to JS types and back. There are wrappers for JS objects and arrays, `com.github.stefanrichterhuber.quickjs.QuickJSObject` and `com.github.stefanrichterhuber.quickjs.QuickJSArray`. These allow to modify the JS objects and arrays in place. Any other collection or map type is copied, available as JS object or array and returned as `QuickJSObject` or `QuickJSArray` from invocation. A Java function imported into the JS context will be exported as `com.github.stefanrichterhuber.quickjs.QuickJSFunction`.
+The rust library seamlessly translates all supported Java types to JS types and back. There are wrappers for JS objects and arrays, `io.github.stefanrichterhuber.quickjs.QuickJSObject` and `io.github.stefanrichterhuber.quickjs.QuickJSArray`. These allow to modify the JS objects and arrays in place. Any other collection or map type is copied, available as JS object or array and returned as `QuickJSObject` or `QuickJSArray` from invocation. A Java function imported into the JS context will be exported as `io.github.stefanrichterhuber.quickjs.QuickJSFunction`.
 All supported Java types can be used as globals, retrieved as globals or used as function parameters or return values and map values. As a consequence of this design nested objects  and arrays (maps of maps, arrays of objects, arrays of arrays, functions returning objects etc.) are supported.
 
 | Java type                                                   |      JS Type            |  Remark                                                                                                                                                                       |
@@ -101,19 +102,19 @@ All supported Java types can be used as globals, retrieved as globals or used as
 | `java.lang.Double` / `java.lang.Float`                      | `float` ( 64-bit)       | rquickjs only supports 64-bit floats                                                                                                                                          |
 | `java.lang.String`                                          | `string`                | -                                                                                                                                                                             |
 | `java.lang.Boolean`                                         | `bool`                  | -                                                                                                                                                                             |
-| `com.github.stefanrichterhuber.quickjs.QuickJSObject`       | `object`                | QuickJSObject is a native wrapper around JS objects. Any modification to the object will be reflected in the JS object and vice versa. Values can be of any of the supported Java types. Key can be of type String, Number or boolean. All JS objects will be returned as QuickJSObject. |
+| `io.github.stefanrichterhuber.quickjs.QuickJSObject`       | `object`                | QuickJSObject is a native wrapper around JS objects. Any modification to the object will be reflected in the JS object and vice versa. Values can be of any of the supported Java types. Key can be of type String, Number or boolean. All JS objects will be returned as QuickJSObject. |
 | `java.util.Map<String, ?>`                                  | `object`                | Key is expected to be a String, values can be of any of the supported Java types, including another map or functions!                                                         |
-| `com.github.stefanrichterhuber.quickjs.QuickJSArray`         | `array`                | QuickJSArray is a native wrapper around JS arrays. Any modification to the array will be reflected in the JS array and vice versa. Values can be of any of the supported Java types. |
-| `java.lang.Iterable<?>`                                     | `array`                 | Iterable is copied value by value to JS array. If extracted back from JS, the array will always return as a `com.github.stefanrichterhuber.quickjs.QuickJSArray`. Values can be of any of the supported Java types. |
-| `java.lang.Object[]`                                        | `array`                 | Array is copied value by value to JS array. If extracted back from JS, the array will always return as a `com.github.stefanrichterhuber.quickjs.QuickJSArray`. Values can be of any of the supported Java types. |
+| `io.github.stefanrichterhuber.quickjs.QuickJSArray`         | `array`                | QuickJSArray is a native wrapper around JS arrays. Any modification to the array will be reflected in the JS array and vice versa. Values can be of any of the supported Java types. |
+| `java.lang.Iterable<?>`                                     | `array`                 | Iterable is copied value by value to JS array. If extracted back from JS, the array will always return as a `io.github.stefanrichterhuber.quickjs.QuickJSArray`. Values can be of any of the supported Java types. |
+| `java.lang.Object[]`                                        | `array`                 | Array is copied value by value to JS array. If extracted back from JS, the array will always return as a `io.github.stefanrichterhuber.quickjs.QuickJSArray`. Values can be of any of the supported Java types. |
 | `java.util.function.Function<?,?>`                          | `function`              | both parameter and return type could be any of the supported Java types                                                                                                       |
 | `java.util.function.Supplier<?>`                            | `function`              | return type could be any of the supported Java types                                                                                                                          |
 | `java.util.function.BiFunction<?,?,?>`                      | `function`              | both parameters and return type could be any of the supported Java types                                                                                                      |
 | `java.util.function.Consumer<?>`                            | `function`              | parameter could be any of the supported Java types                                                                                                                            |
 | `java.util.function.BiConsumer<?, ?>`                       | `function`              | parameter could be any of the supported Java types                                                                                                                            |
-| `com.github.stefanrichterhuber.quickjs.VariadicFunction<?>` | `function`              | Java function with an `java.lang.Object` array (variardic parameters) as parameter, a generic solution when other functions don't work. Requires manual casts                 |
-| `com.github.stefanrichterhuber.quickjs.QuickJSFunction`     | `function`              | if js returns a function, its converted to a QuickJSFunction which can be called from Java or added back to the JS context where it will be transformed back to a function    |
-| `java.lang.Exception`                                       | `Exception`             | Java exceptions are mapped to JS exceptions. JS exceptions are mapped to `com.github.stefanrichterhuber.quickjs.QuickJSScriptException`. File and line-number is preserved, full stacktrace, however, is lost |
+| `io.github.stefanrichterhuber.quickjs.VariadicFunction<?>` | `function`              | Java function with an `java.lang.Object` array (variardic parameters) as parameter, a generic solution when other functions don't work. Requires manual casts                 |
+| `io.github.stefanrichterhuber.quickjs.QuickJSFunction`     | `function`              | if js returns a function, its converted to a QuickJSFunction which can be called from Java or added back to the JS context where it will be transformed back to a function    |
+| `java.lang.Exception`                                       | `Exception`             | Java exceptions are mapped to JS exceptions. JS exceptions are mapped to `io.github.stefanrichterhuber.quickjs.QuickJSScriptException`. File and line-number is preserved, full stacktrace, however, is lost |
 
 ### Logging
 
@@ -127,6 +128,12 @@ This library uses log4j2 for logging on the java side and the `log` crate on the
 - [x] Support cross-build of native library in maven, so multiple arches are supported out-of-the box.
 - [ ] Implement support for [JSR223 Java Scripting API](https://docs.oracle.com/javase/8/docs/technotes/guides/scripting/prog_guide/api.html)
 .
+
+## Breaking changes 
+
+Version 2.0.0 introduces breaking changes:
+
+- The groupId / package names have been changed from `com.github.stefanrichterhuber` to `io.github.stefanrichterhuber`.
 
 ## Architecture
 

@@ -75,9 +75,9 @@ pub(crate) fn persistent_to_ptr<'js>(array: Box<Persistent<Object<'static>>>) ->
     Box::into_raw(array) as jlong
 }
 
-/// Implementation of com.github.stefanrichterhuber.quickjs.QuickJSObject.createNativeObject
+/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSObject.createNativeObject
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSObject_createNativeObject<
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSObject_createNativeObject<
     'a,
 >(
     mut _env: JNIEnv<'a>,
@@ -101,9 +101,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSObject_
     persistent_to_ptr(result)
 }
 
-/// Implementation of com.github.stefanrichterhuber.quickjs.QuickJSObject.closeObject
+/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSObject.closeObject
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSObject_closeObject<'a>(
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSObject_closeObject<'a>(
     mut _env: JNIEnv<'a>,
     _obj: JObject<'a>,
     object_ptr: jlong,
@@ -113,11 +113,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSObject_
     drop(runtime);
 }
 
-/// Implementation of com.github.stefanrichterhuber.quickjs.QuickJSObject.getObjectSize
+/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSObject.getObjectSize
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSObject_getObjectSize<
-    'a,
->(
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSObject_getObjectSize<'a>(
     mut _env: JNIEnv<'a>,
     _obj: JObject<'a>,
     object_ptr: jlong,
@@ -129,9 +127,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSObject_
     result
 }
 
-/// Implementation of com.github.stefanrichterhuber.quickjs.QuickJSObject.setValue
+/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSObject.setValue
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSObject_setValue<'a>(
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSObject_setValue<'a>(
     mut env: JNIEnv<'a>,
     _obj: JObject<'a>,
     object_ptr: jlong,
@@ -156,9 +154,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSObject_
     true as jboolean
 }
 
-/// Implementation of com.github.stefanrichterhuber.quickjs.QuickJSObject.getValue
+/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSObject.getValue
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSObject_getValue<'a>(
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSObject_getValue<'a>(
     mut env: JNIEnv<'a>,
     _obj: JObject<'a>,
     object_ptr: jlong,
@@ -186,9 +184,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSObject_
     value
 }
 
-/// Implementation of com.github.stefanrichterhuber.quickjs.QuickJSObject.containsKey
+/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSObject.containsKey
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSObject_containsKey<'a>(
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSObject_containsKey<'a>(
     mut env: JNIEnv<'a>,
     _obj: JObject<'a>,
     object_ptr: jlong,
@@ -215,9 +213,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSObject_
     value as jboolean
 }
 
-/// Implementation of com.github.stefanrichterhuber.quickjs.QuickJSObject.removeValue
+/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSObject.removeValue
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSObject_removeValue<'a>(
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSObject_removeValue<'a>(
     mut env: JNIEnv<'a>,
     _obj: JObject<'a>,
     object_ptr: jlong,
@@ -244,9 +242,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSObject_
     value as jboolean
 }
 
-/// Implementation of com.github.stefanrichterhuber.quickjs.QuickJSObject.keySet
+/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSObject.keySet
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSObject_keySet<'vm>(
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSObject_keySet<'vm>(
     env: JNIEnv<'vm>,
     _obj: JObject<'vm>,
     object_ptr: jlong,

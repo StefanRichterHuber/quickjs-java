@@ -9,10 +9,10 @@ use jni::{
 use log::{debug, Level, LevelFilter};
 use rquickjs::Runtime;
 
-// ---------------------- com.github.stefanrichterhuber.quickjs.QuickJSRuntime
-/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSRuntime.createRuntime()
+// ---------------------- io.github.stefanrichterhuber.quickjs.QuickJSRuntime
+/// Implementation io.github.stefanrichterhuber.quickjs.QuickJSRuntime.createRuntime()
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSRuntime_createRuntime<
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSRuntime_createRuntime<
     'a,
 >(
     mut _env: JNIEnv<'a>,
@@ -26,7 +26,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSRuntime
     let target = Rc::new(_env.new_global_ref(_obj).unwrap());
     let js_interrupt_id = _env
         .get_method_id(
-            "com/github/stefanrichterhuber/quickjs/QuickJSRuntime",
+            "io/github/stefanrichterhuber/quickjs/QuickJSRuntime",
             "jsInterrupt",
             "()Z",
         )
@@ -62,11 +62,9 @@ pub(crate) fn runtime_to_ptr(runtime: Box<Runtime>) -> jlong {
     Box::into_raw(runtime) as jlong
 }
 
-/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSRuntime.closeRuntime(long ptr)
+/// Implementation io.github.stefanrichterhuber.quickjs.QuickJSRuntime.closeRuntime(long ptr)
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSRuntime_closeRuntime<
-    'a,
->(
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSRuntime_closeRuntime<'a>(
     mut _env: JNIEnv<'a>,
     _obj: JObject<'a>,
     runtime_ptr: jlong,
@@ -76,9 +74,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSRuntime
     drop(runtime);
 }
 
-/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSRuntime.setMemoryLimit(long ptr, long limit)
+/// Implementation io.github.stefanrichterhuber.quickjs.QuickJSRuntime.setMemoryLimit(long ptr, long limit)
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSRuntime_setMemoryLimit<
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSRuntime_setMemoryLimit<
     'a,
 >(
     mut _env: JNIEnv<'a>,
@@ -96,9 +94,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSRuntime
     _ = runtime_to_ptr(runtime);
 }
 
-/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSRuntime.setMaxStackSize(long ptr, long limit)
+/// Implementation io.github.stefanrichterhuber.quickjs.QuickJSRuntime.setMaxStackSize(long ptr, long limit)
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSRuntime_setMaxStackSize<
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSRuntime_setMaxStackSize<
     'a,
 >(
     mut _env: JNIEnv<'a>,
@@ -149,7 +147,7 @@ impl log::Log for JavaLogContext {
             if let Ok(message_string) = env.new_string(message) {
                 let _result = unsafe {
                     env.call_static_method_unchecked(
-                        "com/github/stefanrichterhuber/quickjs/QuickJSRuntime",
+                        "io/github/stefanrichterhuber/quickjs/QuickJSRuntime",
                         method_id,
                         ReturnType::Primitive(jni::signature::Primitive::Void),
                         &[
@@ -168,11 +166,11 @@ impl log::Log for JavaLogContext {
     }
 }
 
-/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSRuntime.initLogging()
+/// Implementation io.github.stefanrichterhuber.quickjs.QuickJSRuntime.initLogging()
 /// Configures the `log` crate with `std` features to call back to java with each log message
 /// see https://docs.rs/log/latest/log/
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSRuntime_initLogging<'a>(
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSRuntime_initLogging<'a>(
     mut _env: JNIEnv<'a>,
     _obj: JObject<'a>,
     level: jint,
@@ -180,7 +178,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSRuntime
     if level > 0 {
         let log_id = _env
             .get_static_method_id(
-                "com/github/stefanrichterhuber/quickjs/QuickJSRuntime",
+                "io/github/stefanrichterhuber/quickjs/QuickJSRuntime",
                 "runtimeLog",
                 "(ILjava/lang/String;)V",
             )

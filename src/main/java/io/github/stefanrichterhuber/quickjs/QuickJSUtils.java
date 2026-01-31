@@ -1,4 +1,4 @@
-package com.github.stefanrichterhuber.quickjs;
+package io.github.stefanrichterhuber.quickjs;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;

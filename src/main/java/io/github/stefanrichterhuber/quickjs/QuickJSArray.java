@@ -1,4 +1,4 @@
-package com.github.stefanrichterhuber.quickjs;
+package io.github.stefanrichterhuber.quickjs;
 
 import java.util.AbstractList;
 import java.util.Collection;
@@ -6,6 +6,12 @@ import java.util.Collection;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+/**
+ * Wrapper for native JS arrays. Exposed in the form of a Java List.
+ * 
+ * @param <T> type of the elements in the array. Any type that can be converted
+ *            to a QuickJS value (including other lists)
+ */
 public class QuickJSArray<T> extends AbstractList<T> {
     private static final Logger LOGGER = LogManager.getLogger();
 
@@ -143,7 +149,6 @@ public class QuickJSArray<T> extends AbstractList<T> {
         return this.ptr;
     }
 
-    @SuppressWarnings("unchecked")
     @Override
     public T get(int index) {
         if (index < 0 || index >= size()) {
@@ -194,6 +199,12 @@ public class QuickJSArray<T> extends AbstractList<T> {
         return oldValue;
     }
 
+    /**
+     * Closes the native QuickJS array. Makes the array invalid and this
+     * list instance unusable.
+     * 
+     * @throws Exception
+     */
     private void close() throws Exception {
         if (this.ptr != 0) {
             closeArray(ptr);

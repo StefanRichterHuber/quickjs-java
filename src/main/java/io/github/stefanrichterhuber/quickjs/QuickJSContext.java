@@ -1,4 +1,4 @@
-package com.github.stefanrichterhuber.quickjs;
+package io.github.stefanrichterhuber.quickjs;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -190,6 +190,8 @@ public class QuickJSContext implements AutoCloseable {
      * 
      * @param name   Name of the variable
      * @param object QuickJSObject to be set as global variable
+     * @param <K>    type of the keys in the object
+     * @param <V>    type of the values in the object
      */
     public <K, V> void setGlobal(String name, QuickJSObject<K, V> object) {
         this.setGlobal(getContextPointer(), name, object);

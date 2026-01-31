@@ -19,7 +19,7 @@ use crate::js_object;
 ///
 type ForEachFn<'vm, T> = Box<dyn Fn(&mut JNIEnv<'vm>, &JObject<'vm>, JObject<'vm>) -> T + 'vm>;
 
-/// JS Wrapper for com.github.stefanrichterhuber.quickjs.VariadicFunction
+/// JS Wrapper for io.github.stefanrichterhuber.quickjs.VariadicFunction
 pub struct VariadicFunction {
     target: Rc<GlobalRef>,
     context: Rc<GlobalRef>,
@@ -28,8 +28,8 @@ pub struct VariadicFunction {
 
 impl VariadicFunction {
     /// Creates a new VariadicFunction with the necessary references to the function object itself, the global java QuickJSContet and the vm object.
-    /// * `target` - A java object of type com.github.stefanrichterhuber.quickjs.VariadicFunction
-    /// * `context` - A java object of type com.github.stefanrichterhuber.quickjs.QuickJSContext
+    /// * `target` - A java object of type io.github.stefanrichterhuber.quickjs.VariadicFunction
+    /// * `context` - A java object of type io.github.stefanrichterhuber.quickjs.QuickJSContext
     /// * `vm` - A java vm object
     fn new(target: Rc<GlobalRef>, context: Rc<GlobalRef>, vm: jni::JavaVM) -> VariadicFunction {
         VariadicFunction {
@@ -67,14 +67,14 @@ impl<'js, P> IntoJsFunc<'js, P> for VariadicFunction {
                     env.set_object_array_element(&args_array, i as i32, &java_object)
                         .unwrap();
                 } else {
-                    error!("Error preparing parameters for com.github.stefanrichterhuber.quickjs.VariadicFunction: Could not convert value at index {} to java object. Set to `null`", i);
+                    error!("Error preparing parameters for io.github.stefanrichterhuber.quickjs.VariadicFunction: Could not convert value at index {} to java object. Set to `null`", i);
                 }
             } else {
-                error!("Error preparing parameters for com.github.stefanrichterhuber.quickjs.VariadicFunction: JS value at index {} is none. Set to `null`", i);
+                error!("Error preparing parameters for io.github.stefanrichterhuber.quickjs.VariadicFunction: JS value at index {} is none. Set to `null`", i);
             }
         }
 
-        trace!("Calling java function com.github.stefanrichterhuber.quickjs.VariadicFunction");
+        trace!("Calling java function io.github.stefanrichterhuber.quickjs.VariadicFunction");
 
         // Then finally call function
         let call_result = env.call_method(
@@ -257,7 +257,7 @@ impl ProxiedJavaValue {
     ) -> Self {
         // Check if the iterable is actually a QuickJSArray (wrapping a native JS array)
         if ProxiedJavaValue::is_instance_of(
-            "com/github/stefanrichterhuber/quickjs/QuickJSArray",
+            "io/github/stefanrichterhuber/quickjs/QuickJSArray",
             env,
             &obj,
         ) {
@@ -292,7 +292,7 @@ impl ProxiedJavaValue {
         ProxiedJavaValue::JSFunction(ptr)
     }
 
-    /// Wraps a com.github.stefanrichterhuber.quickjs.VariadicFunction into a JS function
+    /// Wraps a io.github.stefanrichterhuber.quickjs.VariadicFunction into a JS function
     fn from_variadic_function<'vm>(
         env: &mut JNIEnv<'vm>,
         context: &JObject<'vm>,
@@ -303,7 +303,7 @@ impl ProxiedJavaValue {
         // https://github.com/jni-rs/jni-rs/issues/488#issuecomment-1699852154
         let vm = env.get_java_vm().unwrap();
         trace!(
-            "Create JS function from Java com.github.stefanrichterhuber.quickjs.VariadicFunction"
+            "Create JS function from Java io.github.stefanrichterhuber.quickjs.VariadicFunction"
         );
         ProxiedJavaValue::VarFunction(VariadicFunction::new(target, context, vm))
     }
@@ -561,7 +561,7 @@ impl ProxiedJavaValue {
     fn from_map<'vm>(env: &mut JNIEnv<'vm>, context: &JObject<'vm>, obj: JObject<'vm>) -> Self {
         // Check if the iterable is actually a QuickJSObject (wrapping a native JS object)
         if ProxiedJavaValue::is_instance_of(
-            "com/github/stefanrichterhuber/quickjs/QuickJSObject",
+            "io/github/stefanrichterhuber/quickjs/QuickJSObject",
             env,
             &obj,
         ) {
@@ -636,14 +636,14 @@ impl ProxiedJavaValue {
         } else if ProxiedJavaValue::is_instance_of("java/util/Map", env, &obj) {
             ProxiedJavaValue::from_map(env, context, obj)
         } else if ProxiedJavaValue::is_instance_of(
-            "com/github/stefanrichterhuber/quickjs/QuickJSFunction",
+            "io/github/stefanrichterhuber/quickjs/QuickJSFunction",
             env,
             &obj,
         ) {
             // First check for the special case of QuickJSFunction, because it implements both VariadicFunction and Function
             ProxiedJavaValue::from_quick_js_function(env, obj)
         } else if ProxiedJavaValue::is_instance_of(
-            "com/github/stefanrichterhuber/quickjs/VariadicFunction",
+            "io/github/stefanrichterhuber/quickjs/VariadicFunction",
             env,
             &obj,
         ) {

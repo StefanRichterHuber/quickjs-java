@@ -1,4 +1,4 @@
-package com.github.stefanrichterhuber.quickjs;
+package io.github.stefanrichterhuber.quickjs;
 
 import java.util.AbstractMap;
 import java.util.Collection;
@@ -9,8 +9,16 @@ import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import com.github.stefanrichterhuber.quickjs.internal.QuickJSObjectEntry;
+import io.github.stefanrichterhuber.quickjs.internal.QuickJSObjectEntry;
 
+/**
+ * Wrapper for native QuickJS objects. Exposed in the form of a Java Map.
+ * 
+ * @param <K> type of the keys in the object. Must be a String, Number or
+ *            Boolean.
+ * @param <V> type of the values in the object. Any type that can be converted
+ *            to a QuickJS value (including other maps)
+ */
 public class QuickJSObject<K, V> extends AbstractMap<K, V> {
     private static final Logger LOGGER = LogManager.getLogger();
 
@@ -154,6 +162,12 @@ public class QuickJSObject<K, V> extends AbstractMap<K, V> {
         return this.ptr;
     }
 
+    /**
+     * Closes the native QuickJS object. Makes the object invalid and this
+     * instance unusable.
+     * 
+     * @throws Exception
+     */
     private void close() throws Exception {
         if (this.ptr != 0) {
             closeObject(ptr);
