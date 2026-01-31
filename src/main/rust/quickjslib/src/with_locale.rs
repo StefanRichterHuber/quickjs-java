@@ -1,6 +1,7 @@
 #[cfg(all(feature = "locale_workaround", not(target_os = "windows")))]
 use std::ffi::CString;
 
+#[cfg(all(feature = "locale_workaround", not(target_os = "windows")))]
 use log::debug;
 
 /// A temporary locale that can be used to temporarily set the locale for a function invocation. This is necessary due to a bug / design decision in QuickJS <https://github.com/bellard/quickjs/issues/106>
