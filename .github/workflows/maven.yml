@@ -29,4 +29,4 @@ jobs:
         distribution: 'temurin'
         cache: maven
     - name: Build with Maven
-      run: mvn -B package --file pom.xml
+      run: mvn -P install-cross,build-linux-x86-64,build-linux-armv7,build-linux-aarch64,build-windows-x86_64 -Dcargo.profile=release -Dcargo.profile.folder=release -B package --file pom.xml

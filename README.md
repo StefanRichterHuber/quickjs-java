@@ -23,16 +23,28 @@ There are, however, other projects binding QuickJS to the JVM, which might be wo
 
 ## Build
 
-You need Java 21 and Rust with `cargo` and [`cross`](https://github.com/cross-rs/cross) to build this project. So a simple `mvn clean install` is enough to build and test the whole library. Initial build takes some while because for each target platform a Docker image has to be downloaded.
+You need Java 21 and Rust with `cargo` and [`cross`](https://github.com/cross-rs/cross) to build this project.
 
-The `exec-maven-plugin` is used to start the cross build of the native library for several different platforms and afterwards the created library files are copied together using `maven-resources-plugin`. With the file `src/main/rust/quickjslib/Cross.toml` cross is configured for different platforms. Especially a recent version `libclang` is necessary to use Rust `bindgen` to generate the platform-specific bindings to QuickJS within `cross`. Therefore one has to add a new execution to both the `exec-maven-plugin` and the `maven-resources-plugin`.
+The `exec-maven-plugin` is used to start the cross build of the native library for several different platforms and afterwards the created library files are copied together using `maven-resources-plugin`. With the file `src/main/rust/quickjslib/Cross.toml` cross is configured for different platforms. Especially a recent version `libclang` is necessary to use Rust `bindgen` to generate the platform-specific bindings to QuickJS within `cross`. 
+
+Each platform has its own maven build profile. For development it is recommended to only build for one platform at a time. You can use the property `build-linux-x86-64`, `build-linux-aarch64`, `build-linux-armv7`, `build-windows-x86-64` to build for a specific platform.
+
+For normal dev purposes build and test the project with `mvn clean install -P build-linux-x86-64`.
 
 Currently supported platforms for the native library:
 
-- `aarch64-unknown-linux-gnu`: Linux ARM 64-Bit
-- `x86_64-unknown-linux-gnu`:  Linux x86 64-Bit
-- `armv7-unknown-linux-gnueabihf`: Linux ARM-32-Bit
-- `x86_64-pc-windows-gnu`: Windows x86 64-Bit
+- `x86_64-unknown-linux-gnu`:  Linux x86 64-Bit, activated by default (Property `build-linux-x86-64`)
+- `aarch64-unknown-linux-gnu`: Linux ARM 64-Bit (Property `build-linux-aarch64`)
+- `armv7-unknown-linux-gnueabihf`: Linux ARM-32-Bit (Property `build-linux-armv7`)
+- `x86_64-pc-windows-gnu`: Windows x86 64-Bit (Property `build-windows-x86-64`)
+
+There es is als an additional profile `install-cross` which install the rust cross build toolchain.
+
+By default all rust code is build with the `dev` profile to allow for faster development. Only in the maven profile `release` the rust code is build with the `release` profile and signed for publishing.
+
+For a full release build of the library use 
+
+` mvn -P install-cross,build-linux-x86-64,build-linux-armv7,build-linux-aarch64,build-windows-x86_64 -Dcargo.profile=release -Dcargo.profile.folder=release clean install`
 
 ## How to use
 
