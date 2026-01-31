@@ -1,4 +1,4 @@
-package com.github.stefanrichterhuber.quickjs;
+package io.github.stefanrichterhuber.quickjs;
 
 import java.util.AbstractMap;
 import java.util.Collection;
@@ -9,7 +9,7 @@ import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import com.github.stefanrichterhuber.quickjs.internal.QuickJSObjectEntry;
+import io.github.stefanrichterhuber.quickjs.internal.QuickJSObjectEntry;
 
 public class QuickJSObject<K, V> extends AbstractMap<K, V> {
     private static final Logger LOGGER = LogManager.getLogger();

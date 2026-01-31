@@ -1,4 +1,4 @@
-package com.github.stefanrichterhuber.quickjs;
+package io.github.stefanrichterhuber.quickjs;
 
 /**
  * This RuntimeException maps exceptions created by the JS runtime. Since we
@@ -56,6 +56,7 @@ public class QuickJSScriptException extends RuntimeException {
 
     /**
      * Parses the line number from the JS stack trace
+     * 
      * @param jsStackTrace Stack trace
      * @return Line number found or null fi none present
      */

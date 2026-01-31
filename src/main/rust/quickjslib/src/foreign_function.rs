@@ -8,9 +8,9 @@ use rquickjs::{function::Args, Function};
 
 use crate::{context, java_js_proxy, js_java_proxy::JSJavaProxy, with_locale};
 
-/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSFunction.closeFunction(long ptr)
+/// Implementation io.github.stefanrichterhuber.quickjs.QuickJSFunction.closeFunction(long ptr)
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSFunction_closeFunction<
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSFunction_closeFunction<
     'a,
 >(
     mut _env: JNIEnv<'a>,
@@ -32,9 +32,9 @@ pub(crate) fn function_to_ptr(fun: Box<Function>) -> jlong {
     Box::into_raw(fun) as jlong
 }
 
-/// Implementation com.github.stefanrichterhuber.quickjs.QuickJSFunction.callFunction(long ptr)
+/// Implementation io.github.stefanrichterhuber.quickjs.QuickJSFunction.callFunction(long ptr)
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSFunction_callFunction<
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSFunction_callFunction<
     'a,
 >(
     mut _env: JNIEnv<'a>,
@@ -47,7 +47,7 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSFunctio
         .get_field(
             &_obj,
             "ctx",
-            "Lcom/github/stefanrichterhuber/quickjs/QuickJSContext;",
+            "Lio/github/stefanrichterhuber/quickjs/QuickJSContext;",
         )
         .unwrap()
         .l()

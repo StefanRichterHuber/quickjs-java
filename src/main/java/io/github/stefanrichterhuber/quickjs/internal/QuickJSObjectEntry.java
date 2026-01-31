@@ -1,8 +1,8 @@
-package com.github.stefanrichterhuber.quickjs.internal;
+package io.github.stefanrichterhuber.quickjs.internal;
 
 import java.util.Map.Entry;
 
-import com.github.stefanrichterhuber.quickjs.QuickJSObject;
+import io.github.stefanrichterhuber.quickjs.QuickJSObject;
 
 /**
  * Entry implementation for QuickJSObject. Keys are copied from the JS object

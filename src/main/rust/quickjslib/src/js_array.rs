@@ -49,9 +49,9 @@ where
     result
 }
 
-/// Implementation of com.github.stefanrichterhuber.quickjs.QuickJSArray.createNativeArray
+/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSArray.createNativeArray
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_createNativeArray<
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSArray_createNativeArray<
     'a,
 >(
     mut _env: JNIEnv<'a>,
@@ -75,9 +75,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_c
     persistent_to_ptr(result)
 }
 
-/// Implementation of com.github.stefanrichterhuber.quickjs.QuickJSArray.closeArray
+/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSArray.closeArray
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_closeArray<'a>(
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSArray_closeArray<'a>(
     mut _env: JNIEnv<'a>,
     _obj: JObject<'a>,
     array_ptr: jlong,
@@ -87,9 +87,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_c
     drop(runtime);
 }
 
-/// Implementation of com.github.stefanrichterhuber.quickjs.QuickJSArray.getArraySize
+/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSArray.getArraySize
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_getArraySize<'a>(
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSArray_getArraySize<'a>(
     mut _env: JNIEnv<'a>,
     _obj: JObject<'a>,
     array_ptr: jlong,
@@ -104,9 +104,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_g
     result
 }
 
-/// Implementation of com.github.stefanrichterhuber.quickjs.QuickJSArray.setValue
+/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSArray.setValue
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_setValue<'a>(
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSArray_setValue<'a>(
     mut env: JNIEnv<'a>,
     _obj: JObject<'a>,
     array_ptr: jlong,
@@ -130,9 +130,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_s
     true as jboolean
 }
 
-/// Implementation of com.github.stefanrichterhuber.quickjs.QuickJSArray.addValue
+/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSArray.addValue
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_addValue<'a>(
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSArray_addValue<'a>(
     mut env: JNIEnv<'a>,
     _obj: JObject<'a>,
     array_ptr: jlong,
@@ -158,9 +158,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_a
     result
 }
 
-/// Implementation of com.github.stefanrichterhuber.quickjs.QuickJSArray.getValue
+/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSArray.getValue
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_getValue<'a>(
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSArray_getValue<'a>(
     env: JNIEnv<'a>,
     _obj: JObject<'a>,
     array_ptr: jlong,
@@ -187,9 +187,9 @@ pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_g
     value
 }
 
-/// Implementation of com.github.stefanrichterhuber.quickjs.QuickJSArray.removeValue
+/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSArray.removeValue
 #[no_mangle]
-pub extern "system" fn Java_com_github_stefanrichterhuber_quickjs_QuickJSArray_removeValue<'a>(
+pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSArray_removeValue<'a>(
     env: JNIEnv<'a>,
     _obj: JObject<'a>,
     array_ptr: jlong,

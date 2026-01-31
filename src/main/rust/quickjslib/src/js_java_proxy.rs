@@ -33,7 +33,7 @@ impl<'js, 'vm> JSJavaProxy<'js> {
     }
 
     /// Converts the stored JS value to an Java object
-    /// - `context` Instance of `com.github.stefanrichterhuber.quickjs.QuickJSContext`, the java object managing the js context.
+    /// - `context` Instance of `io.github.stefanrichterhuber.quickjs.QuickJSContext`, the java object managing the js context.
     pub fn into_jobject(
         self,
         context: &JObject<'vm>,
@@ -46,10 +46,10 @@ impl<'js, 'vm> JSJavaProxy<'js> {
             trace!("Map JS undefined to Java null");
             Some(JObject::null())
         } else if self.value.is_array() {
-            trace!("Map JS array to Java com.github.stefanrichterhuber.quickjs.QuickJSArray");
+            trace!("Map JS array to Java io.github.stefanrichterhuber.quickjs.QuickJSArray");
 
             let quickjs_array_class = env
-                .find_class("com/github/stefanrichterhuber/quickjs/QuickJSArray")
+                .find_class("io/github/stefanrichterhuber/quickjs/QuickJSArray")
                 .expect("Failed to load the target class");
 
             let array = self.value.into_array().unwrap();
@@ -60,7 +60,7 @@ impl<'js, 'vm> JSJavaProxy<'js> {
             let quickjs_array = env
                 .new_object(
                     quickjs_array_class,
-                    "(JLcom/github/stefanrichterhuber/quickjs/QuickJSContext;)V",
+                    "(JLio/github/stefanrichterhuber/quickjs/QuickJSContext;)V",
                     &[
                         jni::objects::JValueGen::Long(array_ptr as jlong),
                         jni::objects::JValueGen::Object(context),
@@ -83,12 +83,12 @@ impl<'js, 'vm> JSJavaProxy<'js> {
             let ptr = Box::into_raw(func) as jlong;
 
             let js_function_class = env
-                .find_class("com/github/stefanrichterhuber/quickjs/QuickJSFunction")
+                .find_class("io/github/stefanrichterhuber/quickjs/QuickJSFunction")
                 .expect("Failed to load the target class");
 
             let result = env.new_object(
                 js_function_class,
-                "(JLjava/lang/String;Lcom/github/stefanrichterhuber/quickjs/QuickJSContext;)V",
+                "(JLjava/lang/String;Lio/github/stefanrichterhuber/quickjs/QuickJSContext;)V",
                 &[
                     jni::objects::JValueGen::Long(ptr),
                     jni::objects::JValueGen::Object(&function_name),
@@ -98,7 +98,7 @@ impl<'js, 'vm> JSJavaProxy<'js> {
 
             match result {
                 Ok(result) => {
-                    trace!("Map JS function to Java com.github.stefanrichterhuber.quickjs.QuickJSFunction with id {}", ptr
+                    trace!("Map JS function to Java io.github.stefanrichterhuber.quickjs.QuickJSFunction with id {}", ptr
                     );
                     return Some(result);
                 }
@@ -108,10 +108,10 @@ impl<'js, 'vm> JSJavaProxy<'js> {
                 }
             }
         } else if self.value.is_object() {
-            debug!("Map JS object to Java com.github.stefanrichterhuber.quickjs.QuickJSObject");
+            debug!("Map JS object to Java io.github.stefanrichterhuber.quickjs.QuickJSObject");
 
             let quickjs_object_class = env
-                .find_class("com/github/stefanrichterhuber/quickjs/QuickJSObject")
+                .find_class("io/github/stefanrichterhuber/quickjs/QuickJSObject")
                 .expect("Failed to load the target class");
 
             let object = self.value.into_object().unwrap();
@@ -122,7 +122,7 @@ impl<'js, 'vm> JSJavaProxy<'js> {
             let quickjs_object = env
                 .new_object(
                     quickjs_object_class,
-                    "(JLcom/github/stefanrichterhuber/quickjs/QuickJSContext;)V",
+                    "(JLio/github/stefanrichterhuber/quickjs/QuickJSContext;)V",
                     &[
                         jni::objects::JValueGen::Long(object_ptr as jlong),
                         jni::objects::JValueGen::Object(context),
