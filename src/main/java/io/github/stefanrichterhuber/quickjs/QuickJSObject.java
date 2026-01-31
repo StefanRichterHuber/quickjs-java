@@ -19,7 +19,7 @@ import io.github.stefanrichterhuber.quickjs.internal.QuickJSObjectEntry;
  * @param <V> type of the values in the object. Any type that can be converted
  *            to a QuickJS value (including other maps)
  */
-public class QuickJSObject<K, V> extends AbstractMap<K, V> {
+public final class QuickJSObject<K, V> extends AbstractMap<K, V> {
     private static final Logger LOGGER = LogManager.getLogger();
 
     /**

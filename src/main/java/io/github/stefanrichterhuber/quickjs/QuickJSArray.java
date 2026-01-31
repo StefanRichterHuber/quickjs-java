@@ -12,7 +12,7 @@ import org.apache.logging.log4j.Logger;
  * @param <T> type of the elements in the array. Any type that can be converted
  *            to a QuickJS value (including other lists)
  */
-public class QuickJSArray<T> extends AbstractList<T> {
+public final class QuickJSArray<T> extends AbstractList<T> {
     private static final Logger LOGGER = LogManager.getLogger();
 
     /**
