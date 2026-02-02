@@ -19,6 +19,7 @@ public class QuickJSScriptException extends RuntimeException {
     /**
      * JS stack trace
      */
+    @SuppressWarnings("unused")
     private final String jsStackTrace;
 
     /**

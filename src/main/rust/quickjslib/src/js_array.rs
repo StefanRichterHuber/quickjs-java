@@ -114,7 +114,19 @@ pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSArray_se
     index: jint,
     value: JObject<'a>,
 ) -> jboolean {
-    let value = java_js_proxy::ProxiedJavaValue::from_object(&mut env, &context_object, value);
+    let value = match java_js_proxy::ProxiedJavaValue::from_object(&mut env, &context_object, value)
+    {
+        Ok(value) => value,
+        Err(e) => {
+            env.throw_new(
+                "io/github/stefanrichterhuber/quickjs/QuickJSScriptException",
+                e.to_string(),
+            )
+            .unwrap();
+            return false as jboolean;
+        }
+    };
+
     with_array(
         env,
         array_ptr,
@@ -140,7 +152,19 @@ pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSArray_ad
     index: jint,
     value: JObject<'a>,
 ) -> jboolean {
-    let value = java_js_proxy::ProxiedJavaValue::from_object(&mut env, &context_object, value);
+    let value = match java_js_proxy::ProxiedJavaValue::from_object(&mut env, &context_object, value)
+    {
+        Ok(value) => value,
+        Err(e) => {
+            env.throw_new(
+                "io/github/stefanrichterhuber/quickjs/QuickJSScriptException",
+                e.to_string(),
+            )
+            .unwrap();
+            return false as jboolean;
+        }
+    };
+
     let result = with_array(
         env,
         array_ptr,
@@ -283,9 +307,20 @@ mod tests {
         let ctx = Context::full(&rt).unwrap();
 
         ctx.with(|ctx| {
-            let array = ctx.eval::<rquickjs::Array, _>("[1, 2, 3]").unwrap();
+            let array = ctx
+                .eval::<rquickjs::Array, _>(" let a = [1, 2, 3]; a")
+                .unwrap();
             let result = splice_array(array, 0, 1, None);
             assert!(result.is_ok());
+
+            let result = ctx.eval::<rquickjs::Array, _>("a").unwrap();
+            assert_eq!(result.len(), 2);
+
+            let result = ctx.eval::<rquickjs::Value, _>("a[0]").unwrap();
+            assert_eq!(result.as_int().unwrap(), 2);
+
+            let result = ctx.eval::<rquickjs::Value, _>("a[1]").unwrap();
+            assert_eq!(result.as_int().unwrap(), 3);
         });
     }
 }

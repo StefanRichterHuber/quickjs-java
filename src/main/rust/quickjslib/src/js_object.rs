@@ -137,8 +137,30 @@ pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSObject_s
     key: JObject<'a>,
     value: JObject<'a>,
 ) -> jboolean {
-    let value = java_js_proxy::ProxiedJavaValue::from_object(&mut env, &ctx, value);
-    let key = java_js_proxy::ProxiedJavaValue::from_object(&mut env, &ctx, key);
+    let value = match java_js_proxy::ProxiedJavaValue::from_object(&mut env, &ctx, value) {
+        Ok(value) => value,
+        Err(e) => {
+            env.throw_new(
+                "io/github/stefanrichterhuber/quickjs/QuickJSScriptException",
+                e.to_string(),
+            )
+            .unwrap();
+            return false as jboolean;
+        }
+    };
+
+    let key = match java_js_proxy::ProxiedJavaValue::from_object(&mut env, &ctx, key) {
+        Ok(key) => key,
+        Err(e) => {
+            env.throw_new(
+                "io/github/stefanrichterhuber/quickjs/QuickJSScriptException",
+                e.to_string(),
+            )
+            .unwrap();
+            return false as jboolean;
+        }
+    };
+
     with_object(
         env,
         object_ptr,
@@ -163,7 +185,18 @@ pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSObject_g
     context_object: JObject<'a>,
     key: JObject<'a>,
 ) -> JObject<'a> {
-    let key = java_js_proxy::ProxiedJavaValue::from_object(&mut env, &context_object, key);
+    let key = match java_js_proxy::ProxiedJavaValue::from_object(&mut env, &context_object, key) {
+        Ok(key) => key,
+        Err(e) => {
+            env.throw_new(
+                "io/github/stefanrichterhuber/quickjs/QuickJSScriptException",
+                e.to_string(),
+            )
+            .unwrap();
+            return JObject::null();
+        }
+    };
+
     let value = with_object(
         env,
         object_ptr,
@@ -193,7 +226,18 @@ pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSObject_c
     context_object: JObject<'a>,
     key: JObject<'a>,
 ) -> jboolean {
-    let key = java_js_proxy::ProxiedJavaValue::from_object(&mut env, &context_object, key);
+    let key = match java_js_proxy::ProxiedJavaValue::from_object(&mut env, &context_object, key) {
+        Ok(key) => key,
+        Err(e) => {
+            env.throw_new(
+                "io/github/stefanrichterhuber/quickjs/QuickJSScriptException",
+                e.to_string(),
+            )
+            .unwrap();
+            return false as jboolean;
+        }
+    };
+
     let value = with_object(
         env,
         object_ptr,
@@ -222,7 +266,18 @@ pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSObject_r
     context_object: JObject<'a>,
     key: JObject<'a>,
 ) -> jboolean {
-    let key = java_js_proxy::ProxiedJavaValue::from_object(&mut env, &context_object, key);
+    let key = match java_js_proxy::ProxiedJavaValue::from_object(&mut env, &context_object, key) {
+        Ok(key) => key,
+        Err(e) => {
+            env.throw_new(
+                "io/github/stefanrichterhuber/quickjs/QuickJSScriptException",
+                e.to_string(),
+            )
+            .unwrap();
+            return false as jboolean;
+        }
+    };
+
     let value = with_object(
         env,
         object_ptr,

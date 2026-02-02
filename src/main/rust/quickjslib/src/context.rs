@@ -278,6 +278,18 @@ pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSContext_
         .into();
     let value = ProxiedJavaValue::from_object(&mut _env, &_obj, value);
 
+    let value = match value {
+        Ok(value) => value,
+        Err(e) => {
+            _env.throw_new(
+                "io/github/stefanrichterhuber/quickjs/QuickJSScriptException",
+                e.to_string(),
+            )
+            .unwrap();
+            return;
+        }
+    };
+
     with_context(&context, |ctx| {
         let globals = ctx.globals();
         let s = globals.set(&key_string, value);
