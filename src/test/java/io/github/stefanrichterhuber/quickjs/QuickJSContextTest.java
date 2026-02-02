@@ -616,6 +616,28 @@ public class QuickJSContextTest {
                 Object d = context.eval("a.d");
                 assertEquals("hello", d);
             }
+            // Numbers as keys
+            {
+                Map<Object, Object> m = Map.of(1, "a", 2, "b");
+                context.setGlobal("a", m);
+
+                Object a = context.eval("a[1]");
+                assertEquals("a", a);
+
+                Object b = context.eval("a[2]");
+                assertEquals("b", b);
+            }
+            // Boolean as key
+            {
+                Map<Object, Object> m = Map.of(true, "a", false, "b");
+                context.setGlobal("a", m);
+
+                Object a = context.eval("a[true]");
+                assertEquals("a", a);
+
+                Object b = context.eval("a[false]");
+                assertEquals("b", b);
+            }
             // Functions could also be stored in a map and called from js
             {
                 Function<String, String> f1 = v -> v.repeat(3);

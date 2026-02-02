@@ -203,7 +203,7 @@ public class QuickJSContext implements AutoCloseable {
      * @param name  Name of the variable
      * @param value Value of the variable
      */
-    public void setGlobal(String name, Map<String, Object> value) {
+    public void setGlobal(String name, Map<?, ?> value) {
         this.setGlobal(getContextPointer(), name, value);
     }
 

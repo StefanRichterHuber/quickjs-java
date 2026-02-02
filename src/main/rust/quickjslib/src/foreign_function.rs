@@ -80,6 +80,18 @@ pub(crate) fn invoke_js_function_with_java_parameters<'a>(
             let arg = env.get_object_array_element(&parameters, i).unwrap();
             let arg_js =
                 java_js_proxy::ProxiedJavaValue::from_object(&mut env, context_object, arg);
+
+            let arg_js = match arg_js {
+                Ok(arg_js) => arg_js,
+                Err(e) => {
+                    env.throw_new(
+                        "io/github/stefanrichterhuber/quickjs/QuickJSScriptException",
+                        e.to_string(),
+                    )
+                    .unwrap();
+                    return JObject::null();
+                }
+            };
             args.push(arg_js);
         }
 

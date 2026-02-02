@@ -17,7 +17,8 @@ use crate::js_object;
 
 /// Type for the function called with the iterator_collect method
 ///
-type ForEachFn<'vm, T> = Box<dyn Fn(&mut JNIEnv<'vm>, &JObject<'vm>, JObject<'vm>) -> T + 'vm>;
+type ForEachFn<'vm, T> =
+    Box<dyn Fn(&mut JNIEnv<'vm>, &JObject<'vm>, JObject<'vm>) -> jni::errors::Result<T>>;
 
 /// JS Wrapper for io.github.stefanrichterhuber.quickjs.VariadicFunction
 pub struct VariadicFunction {
@@ -89,10 +90,16 @@ impl<'js, P> IntoJsFunc<'js, P> for VariadicFunction {
             ProxiedJavaValue::from_throwable(&mut env, exception)
         } else {
             let result = call_result.unwrap().l().unwrap();
-            ProxiedJavaValue::from_object(&mut env, self.context.as_obj(), result)
+            ProxiedJavaValue::from_object(&mut env, self.context.as_ref(), result)
         };
 
-        result.into_js(params.ctx())
+        match result {
+            Ok(value) => value.into_js(params.ctx()),
+            Err(e) => Err(rquickjs::Exception::throw_message(
+                params.ctx(),
+                &e.to_string(),
+            )),
+        }
     }
 }
 
@@ -110,7 +117,7 @@ pub enum ProxiedJavaValue {
     VarFunction(VariadicFunction),
     BiFunction(Box<dyn Fn(Value<'_>, Value<'_>) -> ProxiedJavaValue>),
     Supplier(Box<dyn Fn() -> ProxiedJavaValue>),
-    Map(Vec<(String, ProxiedJavaValue)>),
+    Map(Vec<(ProxiedJavaValue, ProxiedJavaValue)>),
     JSFunction(i64),
     Array(Vec<ProxiedJavaValue>),
     NativeArray(i64),
@@ -118,17 +125,21 @@ pub enum ProxiedJavaValue {
 }
 
 impl ProxiedJavaValue {
-    fn is_instance_of<'vm>(class: &str, env: &mut JNIEnv<'vm>, obj: &JObject<'vm>) -> bool {
+    fn is_instance_of<'vm>(
+        class: &str,
+        env: &mut JNIEnv<'vm>,
+        obj: &JObject<'vm>,
+    ) -> jni::errors::Result<bool> {
         let class_obj = env.find_class(class);
 
         match class_obj {
-            Ok(class_obj) => env.is_instance_of(obj, class_obj).unwrap_or(false),
+            Ok(class_obj) => Ok(env.is_instance_of(obj, class_obj).unwrap_or(false)),
             Err(_) => {
                 // Failing to find class causes an exception -> clear it
                 // env.exception_describe().unwrap();
-                env.exception_clear().unwrap();
+                env.exception_clear()?;
                 error!("Unable to find class {}", &class);
-                false
+                Ok(false)
             }
         }
     }
@@ -136,35 +147,34 @@ impl ProxiedJavaValue {
     /**
      * Checks if the given JObject is actually an array
      */
-    fn is_array<'vm>(env: &mut JNIEnv<'vm>, obj: &JObject<'vm>) -> bool {
-        let class = env.get_object_class(obj).unwrap();
-        let is_array = env.call_method(class, "isArray", "()Z", &[]).unwrap();
-        is_array.z().unwrap()
+    fn is_array<'vm>(env: &mut JNIEnv<'vm>, obj: &JObject<'vm>) -> jni::errors::Result<bool> {
+        let class = env.get_object_class(obj)?;
+        let is_array = env.call_method(class, "isArray", "()Z", &[])?;
+        is_array.z()
     }
 
     /// Creates a ProxiedJavaValue from a Java Throwable
-    pub fn from_throwable<'vm>(env: &mut JNIEnv<'vm>, throwable: JThrowable<'vm>) -> Self {
+    pub fn from_throwable<'vm>(
+        env: &mut JNIEnv<'vm>,
+        throwable: JThrowable<'vm>,
+    ) -> jni::errors::Result<Self> {
         // @see https://stackoverflow.com/questions/27072459/how-to-get-the-message-from-a-java-exception-caught-in-jni
         // Seems to be necessary, otherwise fetching the message fails
-        env.exception_clear().unwrap();
-        let message = env.call_method(&throwable, "getMessage", "()Ljava/lang/String;", &[]);
-        let str: JString = message.unwrap().l().unwrap().into();
-        let error_msg: String = env.get_string(&str).unwrap().into();
+        env.exception_clear()?;
+        let message = env.call_method(&throwable, "getMessage", "()Ljava/lang/String;", &[])?;
+        let str: JString = message.l()?.into();
+        let error_msg: String = env.get_string(&str)?.into();
 
         // Get type of exception
         // e.getClass().getName();
         let exception_class = env
-            .call_method(&throwable, "getClass", "()Ljava/lang/Class;", &[])
-            .unwrap()
-            .l()
-            .unwrap();
+            .call_method(&throwable, "getClass", "()Ljava/lang/Class;", &[])?
+            .l()?;
         let class_name: JString = env
-            .call_method(&exception_class, "getName", "()Ljava/lang/String;", &[])
-            .unwrap()
-            .l()
-            .unwrap()
+            .call_method(&exception_class, "getName", "()Ljava/lang/String;", &[])?
+            .l()?
             .into();
-        let class_name: String = env.get_string(&class_name).unwrap().into();
+        let class_name: String = env.get_string(&class_name)?.into();
 
         // Get line number and file name for a more detailed exception
         // e.getStackTrace()[0].getLineNumber();
@@ -175,54 +185,58 @@ impl ProxiedJavaValue {
                 "getStackTrace",
                 "()[Ljava/lang/StackTraceElement;",
                 &[],
-            )
-            .unwrap()
-            .l()
-            .unwrap()
+            )?
+            .l()?
             .into();
 
-        if !env.is_same_object(JObject::null(), &stack_trace).unwrap()
-            && env.get_array_length(&stack_trace).unwrap() > 0
+        if !env.is_same_object(JObject::null(), &stack_trace)?
+            && env.get_array_length(&stack_trace)? > 0
         {
-            let first_trace_element = env.get_object_array_element(&stack_trace, 0).unwrap();
+            let first_trace_element = env.get_object_array_element(&stack_trace, 0)?;
             let line_number = env
-                .call_method(&first_trace_element, "getLineNumber", "()I", &[])
-                .unwrap()
-                .i()
-                .unwrap();
+                .call_method(&first_trace_element, "getLineNumber", "()I", &[])?
+                .i()?;
             let file: JString = env
                 .call_method(
                     &first_trace_element,
                     "getFileName",
                     "()Ljava/lang/String;",
                     &[],
-                )
-                .unwrap()
-                .l()
-                .unwrap()
+                )?
+                .l()?
                 .into();
             let file: String = if file.is_null() {
                 "".to_string()
             } else {
-                env.get_string(&file).unwrap().into()
+                env.get_string(&file)?.into()
             };
 
             trace!("Map Java exception to JS exception");
 
             warn!("{} ({}: {})", error_msg, file, line_number);
 
-            ProxiedJavaValue::Throwable(error_msg, class_name, file, line_number)
+            Ok(ProxiedJavaValue::Throwable(
+                error_msg,
+                class_name,
+                file,
+                line_number,
+            ))
         } else {
             trace!("Map Java exception to JS exception");
             warn!("{}", error_msg);
-            ProxiedJavaValue::Throwable(error_msg, class_name, "".to_string(), -1)
+            Ok(ProxiedJavaValue::Throwable(
+                error_msg,
+                class_name,
+                "".to_string(),
+                -1,
+            ))
         }
     }
 
     /// Converts a Java null into a JS null
-    pub fn from_null() -> Self {
+    pub fn from_null() -> jni::errors::Result<Self> {
         trace!("Map Java null to JS null");
-        ProxiedJavaValue::Null
+        Ok(ProxiedJavaValue::Null)
     }
 
     /// Converts a Java Object array into a js array
@@ -230,7 +244,7 @@ impl ProxiedJavaValue {
         env: &mut JNIEnv<'vm>,
         context: &JObject<'vm>,
         array: JObjectArray<'vm>,
-    ) -> Self {
+    ) -> jni::errors::Result<Self> {
         if array.is_null() {
             ProxiedJavaValue::from_null()
         } else {
@@ -238,14 +252,14 @@ impl ProxiedJavaValue {
             // Result of the operation -> a list of values
             let mut items: Vec<ProxiedJavaValue> = vec![];
 
-            let len = env.get_array_length(&array).unwrap();
+            let len = env.get_array_length(&array)?;
 
             for i in 0..len {
-                let element = env.get_object_array_element(&array, i).unwrap();
-                let value = ProxiedJavaValue::from_object(env, context, element);
+                let element = env.get_object_array_element(&array, i)?;
+                let value = ProxiedJavaValue::from_object(env, context, element)?;
                 items.push(value);
             }
-            ProxiedJavaValue::Array(items)
+            Ok(ProxiedJavaValue::Array(items))
         }
     }
 
@@ -254,16 +268,16 @@ impl ProxiedJavaValue {
         env: &mut JNIEnv<'vm>,
         context: &JObject<'vm>,
         obj: JObject<'vm>,
-    ) -> Self {
+    ) -> jni::errors::Result<Self> {
         // Check if the iterable is actually a QuickJSArray (wrapping a native JS array)
         if ProxiedJavaValue::is_instance_of(
             "io/github/stefanrichterhuber/quickjs/QuickJSArray",
             env,
             &obj,
-        ) {
-            let array_ptr = env.get_field(&obj, "ptr", "J").unwrap().j().unwrap();
+        )? {
+            let array_ptr = env.get_field(&obj, "ptr", "J")?.j()?;
             trace!("Unwraped Java QuickJSArray to JS array");
-            return ProxiedJavaValue::NativeArray(array_ptr);
+            return Ok(ProxiedJavaValue::NativeArray(array_ptr));
         }
 
         trace!("Create JS array from Java java.lang.Iterable");
@@ -271,25 +285,28 @@ impl ProxiedJavaValue {
         // Create an iterator over all results
         let iterator_result: errors::Result<JValueGen<JObject<'_>>> =
             env.call_method(&obj, "iterator", "()Ljava/util/Iterator;", &[]);
-        let iterator = iterator_result.unwrap().l().unwrap();
+        let iterator = iterator_result?.l()?;
 
         let items = ProxiedJavaValue::iterator_collect(
             env,
             context,
             iterator,
             Box::new(|env, context, value| ProxiedJavaValue::from_object(env, context, value)),
-        );
+        )?;
 
-        ProxiedJavaValue::Array(items)
+        Ok(ProxiedJavaValue::Array(items))
     }
 
     /// Unwraps a QuickJSFunction back to a javascript function
-    fn from_quick_js_function<'vm>(env: &mut JNIEnv<'vm>, obj: JObject<'vm>) -> Self {
+    fn from_quick_js_function<'vm>(
+        env: &mut JNIEnv<'vm>,
+        obj: JObject<'vm>,
+    ) -> jni::errors::Result<Self> {
         trace!("Unwrap Java QuickJSFunction to JS function",);
 
         let ptr_result = env.get_field(&obj, "ptr", "J");
-        let ptr = ptr_result.unwrap().j().unwrap();
-        ProxiedJavaValue::JSFunction(ptr)
+        let ptr = ptr_result?.j()?;
+        Ok(ProxiedJavaValue::JSFunction(ptr))
     }
 
     /// Wraps a io.github.stefanrichterhuber.quickjs.VariadicFunction into a JS function
@@ -297,15 +314,17 @@ impl ProxiedJavaValue {
         env: &mut JNIEnv<'vm>,
         context: &JObject<'vm>,
         obj: JObject<'vm>,
-    ) -> Self {
-        let target = Rc::new(env.new_global_ref(obj).unwrap());
-        let context = Rc::new(env.new_global_ref(context).unwrap());
+    ) -> jni::errors::Result<Self> {
+        let target = Rc::new(env.new_global_ref(obj)?);
+        let context = Rc::new(env.new_global_ref(context)?);
         // https://github.com/jni-rs/jni-rs/issues/488#issuecomment-1699852154
-        let vm = env.get_java_vm().unwrap();
+        let vm = env.get_java_vm()?;
         trace!(
             "Create JS function from Java io.github.stefanrichterhuber.quickjs.VariadicFunction"
         );
-        ProxiedJavaValue::VarFunction(VariadicFunction::new(target, context, vm))
+        Ok(ProxiedJavaValue::VarFunction(VariadicFunction::new(
+            target, context, vm,
+        )))
     }
 
     /// Wraps a java.util.function.BiConsumer into a JS function
@@ -313,11 +332,11 @@ impl ProxiedJavaValue {
         env: &mut JNIEnv<'vm>,
         context: &JObject<'vm>,
         obj: JObject<'vm>,
-    ) -> Self {
-        let target = Rc::new(env.new_global_ref(obj).unwrap());
-        let context = Rc::new(env.new_global_ref(context).unwrap());
+    ) -> jni::errors::Result<Self> {
+        let target = Rc::new(env.new_global_ref(obj)?);
+        let context = Rc::new(env.new_global_ref(context)?);
         // https://github.com/jni-rs/jni-rs/issues/488#issuecomment-1699852154
-        let vm = env.get_java_vm().unwrap();
+        let vm = env.get_java_vm()?;
 
         let f = move |v1: Value, v2: Value| {
             trace!("Calling java function java.util.function.BiConsumer");
@@ -344,15 +363,15 @@ impl ProxiedJavaValue {
 
             let result = if env.exception_check().unwrap() {
                 let exception = env.exception_occurred().unwrap();
-                ProxiedJavaValue::from_throwable(&mut env, exception)
+                ProxiedJavaValue::from_throwable(&mut env, exception).unwrap()
             } else {
-                ProxiedJavaValue::from_null()
+                ProxiedJavaValue::from_null().unwrap()
             };
 
             result
         };
         trace!("Create JS function from Java BiConsumer<Object, Object>",);
-        ProxiedJavaValue::BiFunction(Box::new(f))
+        Ok(ProxiedJavaValue::BiFunction(Box::new(f)))
     }
 
     /// Wraps a java.util.function.Consumer into a JS function
@@ -360,11 +379,11 @@ impl ProxiedJavaValue {
         env: &mut JNIEnv<'vm>,
         context: &JObject<'vm>,
         obj: JObject<'vm>,
-    ) -> Self {
-        let target = Rc::new(env.new_global_ref(obj).unwrap());
-        let context = Rc::new(env.new_global_ref(context).unwrap());
+    ) -> jni::errors::Result<Self> {
+        let target = Rc::new(env.new_global_ref(obj)?);
+        let context = Rc::new(env.new_global_ref(context)?);
         // https://github.com/jni-rs/jni-rs/issues/488#issuecomment-1699852154
-        let vm = env.get_java_vm().unwrap();
+        let vm = env.get_java_vm()?;
 
         let f = move |v1: Value| {
             trace!("Calling java function java.util.function.Consumer");
@@ -384,15 +403,15 @@ impl ProxiedJavaValue {
 
             let result = if env.exception_check().unwrap() {
                 let exception = env.exception_occurred().unwrap();
-                ProxiedJavaValue::from_throwable(&mut env, exception)
+                ProxiedJavaValue::from_throwable(&mut env, exception).unwrap()
             } else {
-                ProxiedJavaValue::from_null()
+                ProxiedJavaValue::from_null().unwrap()
             };
 
             result
         };
         trace!("Create JS function from Java Consumer<Object>",);
-        ProxiedJavaValue::Function(Box::new(f))
+        Ok(ProxiedJavaValue::Function(Box::new(f)))
     }
 
     /// Wraps a java.util.function.Supplier into a JS function
@@ -400,11 +419,11 @@ impl ProxiedJavaValue {
         env: &mut JNIEnv<'vm>,
         context: &JObject<'vm>,
         obj: JObject<'vm>,
-    ) -> Self {
-        let target = Rc::new(env.new_global_ref(obj).unwrap());
-        let context = Rc::new(env.new_global_ref(context).unwrap());
+    ) -> jni::errors::Result<Self> {
+        let target = Rc::new(env.new_global_ref(obj)?);
+        let context = Rc::new(env.new_global_ref(context)?);
         // https://github.com/jni-rs/jni-rs/issues/488#issuecomment-1699852154
-        let vm = env.get_java_vm().unwrap();
+        let vm = env.get_java_vm()?;
 
         let f = move || {
             trace!("Calling java function java.util.function.Supplier");
@@ -415,16 +434,16 @@ impl ProxiedJavaValue {
 
             let result = if env.exception_check().unwrap() {
                 let exception = env.exception_occurred().unwrap();
-                ProxiedJavaValue::from_throwable(&mut env, exception)
+                ProxiedJavaValue::from_throwable(&mut env, exception).unwrap()
             } else {
                 let result = call_result.unwrap().l().unwrap();
-                ProxiedJavaValue::from_object(&mut env, context.as_obj(), result)
+                ProxiedJavaValue::from_object(&mut env, context.as_obj(), result).unwrap()
             };
 
             result
         };
         trace!("Create JS function from Java Supplier<Object>",);
-        ProxiedJavaValue::Supplier(Box::new(f))
+        Ok(ProxiedJavaValue::Supplier(Box::new(f)))
     }
 
     /// Wraps a java.util.function.Function into a JS function
@@ -432,11 +451,11 @@ impl ProxiedJavaValue {
         env: &mut JNIEnv<'vm>,
         context: &JObject<'vm>,
         obj: JObject<'vm>,
-    ) -> Self {
-        let target = Rc::new(env.new_global_ref(obj).unwrap());
-        let context = Rc::new(env.new_global_ref(context).unwrap());
+    ) -> jni::errors::Result<Self> {
+        let target = Rc::new(env.new_global_ref(obj)?);
+        let context = Rc::new(env.new_global_ref(context)?);
         // https://github.com/jni-rs/jni-rs/issues/488#issuecomment-1699852154
-        let vm = env.get_java_vm().unwrap();
+        let vm = env.get_java_vm()?;
 
         let f = move |msg: Value| {
             trace!("Calling java function java.util.function.Function");
@@ -454,16 +473,16 @@ impl ProxiedJavaValue {
 
             let result = if env.exception_check().unwrap() {
                 let exception = env.exception_occurred().unwrap();
-                ProxiedJavaValue::from_throwable(&mut env, exception)
+                ProxiedJavaValue::from_throwable(&mut env, exception).unwrap()
             } else {
                 let result = call_result.unwrap().l().unwrap();
-                ProxiedJavaValue::from_object(&mut env, context.as_ref(), result)
+                ProxiedJavaValue::from_object(&mut env, context.as_ref(), result).unwrap()
             };
 
             result
         };
         trace!("Create JS function from Java Function<Object, Object>",);
-        ProxiedJavaValue::Function(Box::new(f))
+        Ok(ProxiedJavaValue::Function(Box::new(f)))
     }
 
     /// Wraps a java.util.function.BiFunction into a JS function
@@ -471,11 +490,11 @@ impl ProxiedJavaValue {
         env: &mut JNIEnv<'vm>,
         context: &JObject<'vm>,
         obj: JObject<'vm>,
-    ) -> Self {
-        let target = Rc::new(env.new_global_ref(obj).unwrap());
-        let context = Rc::new(env.new_global_ref(context).unwrap());
+    ) -> jni::errors::Result<Self> {
+        let target = Rc::new(env.new_global_ref(obj)?);
+        let context = Rc::new(env.new_global_ref(context)?);
         // https://github.com/jni-rs/jni-rs/issues/488#issuecomment-1699852154
-        let vm = env.get_java_vm().unwrap();
+        let vm = env.get_java_vm()?;
 
         let f = move |v1: Value, v2: Value| {
             trace!("Calling java function java.util.function.BiFunction");
@@ -499,16 +518,16 @@ impl ProxiedJavaValue {
 
             let result = if env.exception_check().unwrap() {
                 let exception = env.exception_occurred().unwrap();
-                ProxiedJavaValue::from_throwable(&mut env, exception)
+                ProxiedJavaValue::from_throwable(&mut env, exception).unwrap()
             } else {
                 let result = call_result.unwrap().l().unwrap();
-                ProxiedJavaValue::from_object(&mut env, context.as_ref(), result)
+                ProxiedJavaValue::from_object(&mut env, context.as_ref(), result).unwrap()
             };
 
             result
         };
         trace!("Create JS function from Java BiFunction<Object, Object, Object>",);
-        ProxiedJavaValue::BiFunction(Box::new(f))
+        Ok(ProxiedJavaValue::BiFunction(Box::new(f)))
     }
 
     /// Converts a Map entry into a pair of String and ProxiedJavaValue
@@ -516,18 +535,17 @@ impl ProxiedJavaValue {
         env: &mut JNIEnv<'vm>,
         context: &JObject<'vm>,
         obj: JObject<'vm>,
-    ) -> (String, Self) {
+    ) -> jni::errors::Result<(Self, Self)> {
         // Get key
-        let get_key_result = env.call_method(&obj, "getKey", "()Ljava/lang/Object;", &[]);
-        let key = get_key_result.unwrap().l().unwrap().into();
-        let key: String = env.get_string(&key).unwrap().into();
-
+        let get_key_result = env.call_method(&obj, "getKey", "()Ljava/lang/Object;", &[])?;
+        let key = get_key_result.l()?;
+        let key: ProxiedJavaValue = ProxiedJavaValue::from_object(env, context, key)?;
         // Get value from entry
-        let get_value_result = env.call_method(&obj, "getValue", "()Ljava/lang/Object;", &[]);
-        let value = get_value_result.unwrap().l().unwrap();
-        let value: ProxiedJavaValue = ProxiedJavaValue::from_object(env, context, value);
+        let get_value_result = env.call_method(&obj, "getValue", "()Ljava/lang/Object;", &[])?;
+        let value = get_value_result.l()?;
+        let value: ProxiedJavaValue = ProxiedJavaValue::from_object(env, context, value)?;
 
-        (key, value)
+        Ok((key, value))
     }
 
     /// Iterates over all items provided by the given Java iterator, applies the for_each function and collects the result into a vector
@@ -536,38 +554,42 @@ impl ProxiedJavaValue {
         context: &JObject<'vm>,
         iterator: JObject<'vm>,
         for_each: ForEachFn<'vm, T>,
-    ) -> Vec<T> {
+    ) -> jni::errors::Result<Vec<T>> {
         // Result of the operation -> a list of key-value pairs
         let mut items: Vec<T> = vec![];
         loop {
             // Check if there is another item
             let has_next_result = env.call_method(&iterator, "hasNext", "()Z", &[]);
-            let has_next = has_next_result.unwrap().z().unwrap();
+            let has_next = has_next_result?.z()?;
             if !has_next {
                 break;
             }
 
             // Map next item
             let next_result = env.call_method(&iterator, "next", "()Ljava/lang/Object;", &[]);
-            let next = next_result.unwrap().l().unwrap();
+            let next = next_result?.l()?;
 
-            let value = for_each(env, context, next);
+            let value = for_each(env, context, next)?;
             items.push(value);
         }
-        items
+        Ok(items)
     }
 
     /// Converts a Java java.util.Map into a js object
-    fn from_map<'vm>(env: &mut JNIEnv<'vm>, context: &JObject<'vm>, obj: JObject<'vm>) -> Self {
+    fn from_map<'vm>(
+        env: &mut JNIEnv<'vm>,
+        context: &JObject<'vm>,
+        obj: JObject<'vm>,
+    ) -> jni::errors::Result<Self> {
         // Check if the iterable is actually a QuickJSObject (wrapping a native JS object)
         if ProxiedJavaValue::is_instance_of(
             "io/github/stefanrichterhuber/quickjs/QuickJSObject",
             env,
             &obj,
-        ) {
-            let object_ptr = env.get_field(&obj, "ptr", "J").unwrap().j().unwrap();
+        )? {
+            let object_ptr = env.get_field(&obj, "ptr", "J")?.j()?;
             trace!("Unwraped Java QuickJSObject to JS object");
-            return ProxiedJavaValue::NativeObject(object_ptr);
+            return Ok(ProxiedJavaValue::NativeObject(object_ptr));
         }
 
         trace!("Copy Java Map<Object, Object> to JS object",);
@@ -578,12 +600,12 @@ impl ProxiedJavaValue {
         let entry_set_result: errors::Result<JValueGen<JObject<'_>>> =
             env.call_method(obj, "entrySet", "()Ljava/util/Set;", &[]);
 
-        let entry_set = entry_set_result.unwrap().l().unwrap();
+        let entry_set = entry_set_result?.l()?;
 
         // Create an iterator over all results
         let iterator_result: errors::Result<JValueGen<JObject<'_>>> =
             env.call_method(entry_set, "iterator", "()Ljava/util/Iterator;", &[]);
-        let iterator = iterator_result.unwrap().l().unwrap();
+        let iterator = iterator_result?.l()?;
 
         // FIXME cache method ids for better performance
         let items = ProxiedJavaValue::iterator_collect(
@@ -591,9 +613,9 @@ impl ProxiedJavaValue {
             context,
             iterator,
             Box::new(|env, context, entry| ProxiedJavaValue::from_map_entry(env, context, entry)),
-        );
+        )?;
 
-        ProxiedJavaValue::Map(items)
+        Ok(ProxiedJavaValue::Map(items))
     }
 
     /// Converts a Java object to a ProxiedJavaValue. This is achieved by checking the plain Java Object with `instance of` checks for its real type, then extract all the values to a ProxiedJavaValue.
@@ -602,90 +624,90 @@ impl ProxiedJavaValue {
         env: &mut JNIEnv<'vm>,
         context: &JObject<'vm>,
         obj: JObject<'vm>,
-    ) -> Self {
+    ) -> jni::errors::Result<Self> {
         if obj.is_null() {
             trace!("Map Java null to JS null");
-            return ProxiedJavaValue::Null;
+            return Ok(ProxiedJavaValue::Null);
         }
 
         // To minimize the number of calls into the JVM, the checks are roughly ordered with probability of being used (so first simple values, then collections, then functions, then not-well-supported values, then fallback)
-        if ProxiedJavaValue::is_instance_of("java/lang/Boolean", env, &obj) {
-            let raw_value = env.call_method(&obj, "booleanValue", "()Z", &[]);
-            let value = raw_value.unwrap().z().unwrap();
+        if ProxiedJavaValue::is_instance_of("java/lang/Boolean", env, &obj)? {
+            let raw_value = env.call_method(&obj, "booleanValue", "()Z", &[])?;
+            let value = raw_value.z()?;
             trace!("Map Java Boolean to JS bool");
-            ProxiedJavaValue::Bool(value)
-        } else if ProxiedJavaValue::is_instance_of("java/lang/Integer", env, &obj) {
-            let raw_value = env.call_method(&obj, "intValue", "()I", &[]);
-            let value = raw_value.unwrap().i().unwrap();
+            Ok(ProxiedJavaValue::Bool(value))
+        } else if ProxiedJavaValue::is_instance_of("java/lang/Integer", env, &obj)? {
+            let raw_value = env.call_method(&obj, "intValue", "()I", &[])?;
+            let value = raw_value.i()?;
             trace!("Map Java Integer to JS int");
-            ProxiedJavaValue::Int(value)
-        } else if ProxiedJavaValue::is_instance_of("java/lang/String", env, &obj) {
+            Ok(ProxiedJavaValue::Int(value))
+        } else if ProxiedJavaValue::is_instance_of("java/lang/String", env, &obj)? {
             let str: JString = obj.into();
-            let plain: String = env.get_string(&str).unwrap().into();
+            let plain: String = env.get_string(&str)?.into();
             trace!("Map Java String to JS String");
-            ProxiedJavaValue::String(plain)
-        } else if ProxiedJavaValue::is_instance_of("java/lang/Double", env, &obj)
-            || ProxiedJavaValue::is_instance_of("java/lang/Float", env, &obj)
+            Ok(ProxiedJavaValue::String(plain))
+        } else if ProxiedJavaValue::is_instance_of("java/lang/Double", env, &obj)?
+            || ProxiedJavaValue::is_instance_of("java/lang/Float", env, &obj)?
         {
-            let raw_value = env.call_method(&obj, "doubleValue", "()D", &[]);
-            let value = raw_value.unwrap().d().unwrap();
+            let raw_value = env.call_method(&obj, "doubleValue", "()D", &[])?;
+            let value = raw_value.d()?;
             trace!("Map Java Double / Float to JS Double",);
-            ProxiedJavaValue::Double(value)
-        } else if ProxiedJavaValue::is_instance_of("java/lang/Iterable", env, &obj) {
+            Ok(ProxiedJavaValue::Double(value))
+        } else if ProxiedJavaValue::is_instance_of("java/lang/Iterable", env, &obj)? {
             ProxiedJavaValue::from_iterable(env, context, obj)
-        } else if ProxiedJavaValue::is_instance_of("java/util/Map", env, &obj) {
+        } else if ProxiedJavaValue::is_instance_of("java/util/Map", env, &obj)? {
             ProxiedJavaValue::from_map(env, context, obj)
         } else if ProxiedJavaValue::is_instance_of(
             "io/github/stefanrichterhuber/quickjs/QuickJSFunction",
             env,
             &obj,
-        ) {
+        )? {
             // First check for the special case of QuickJSFunction, because it implements both VariadicFunction and Function
             ProxiedJavaValue::from_quick_js_function(env, obj)
         } else if ProxiedJavaValue::is_instance_of(
             "io/github/stefanrichterhuber/quickjs/VariadicFunction",
             env,
             &obj,
-        ) {
+        )? {
             // Then check for the more generic case of VariadicFunction because it also implements Function but has an object array as argument
             ProxiedJavaValue::from_variadic_function(env, context, obj)
-        } else if ProxiedJavaValue::is_instance_of("java/util/function/Consumer", env, &obj) {
+        } else if ProxiedJavaValue::is_instance_of("java/util/function/Consumer", env, &obj)? {
             ProxiedJavaValue::from_consumer(env, context, obj)
-        } else if ProxiedJavaValue::is_instance_of("java/util/function/BiConsumer", env, &obj) {
+        } else if ProxiedJavaValue::is_instance_of("java/util/function/BiConsumer", env, &obj)? {
             ProxiedJavaValue::from_biconsumer(env, context, obj)
-        } else if ProxiedJavaValue::is_instance_of("java/util/function/BiFunction", env, &obj) {
+        } else if ProxiedJavaValue::is_instance_of("java/util/function/BiFunction", env, &obj)? {
             ProxiedJavaValue::from_bifunction(env, context, obj)
-        } else if ProxiedJavaValue::is_instance_of("java/util/function/Supplier", env, &obj) {
+        } else if ProxiedJavaValue::is_instance_of("java/util/function/Supplier", env, &obj)? {
             ProxiedJavaValue::from_supplier(env, context, obj)
-        } else if ProxiedJavaValue::is_instance_of("java/util/function/Function", env, &obj) {
+        } else if ProxiedJavaValue::is_instance_of("java/util/function/Function", env, &obj)? {
             ProxiedJavaValue::from_function(env, context, obj)
-        } else if ProxiedJavaValue::is_array(env, &obj) {
+        } else if ProxiedJavaValue::is_array(env, &obj)? {
             let array = JObjectArray::from(obj);
             ProxiedJavaValue::from_array(env, context, array)
-        } else if ProxiedJavaValue::is_instance_of("java/math/BigInteger", env, &obj) {
+        } else if ProxiedJavaValue::is_instance_of("java/math/BigInteger", env, &obj)? {
             // Convert big integer to string -> later on bag to JS big integer
-            let raw_value = env.call_method(&obj, "longValue", "()J", &[]);
-            let value = raw_value.unwrap().j().unwrap();
+            let raw_value = env.call_method(&obj, "longValue", "()J", &[])?;
+            let value = raw_value.j()?;
             trace!("Map Java BigInteger to JS BigInteger",);
-            ProxiedJavaValue::BigInteger(value)
-        } else if ProxiedJavaValue::is_instance_of("java/math/BigDecimal", env, &obj) {
+            Ok(ProxiedJavaValue::BigInteger(value))
+        } else if ProxiedJavaValue::is_instance_of("java/math/BigDecimal", env, &obj)? {
             // Convert big decimal to string -> later on bag to JS big decimal
-            let raw_value = env.call_method(&obj, "toString", "()Ljava/lang/String;", &[]);
-            let str: JString = raw_value.unwrap().l().unwrap().into();
-            let plain: String = env.get_string(&str).unwrap().into();
+            let raw_value = env.call_method(&obj, "toString", "()Ljava/lang/String;", &[])?;
+            let str: JString = raw_value.l()?.into();
+            let plain: String = env.get_string(&str)?.into();
             trace!("Map Java BigDecimal to JS BigDecimal",);
-            ProxiedJavaValue::BigDecimal(plain)
-        } else if ProxiedJavaValue::is_instance_of("java/lang/Long", env, &obj) {
-            let raw_value = env.call_method(&obj, "longValue", "()J", &[]);
-            let value = raw_value.unwrap().j().unwrap();
+            Ok(ProxiedJavaValue::BigDecimal(plain))
+        } else if ProxiedJavaValue::is_instance_of("java/lang/Long", env, &obj)? {
+            let raw_value = env.call_method(&obj, "longValue", "()J", &[])?;
+            let value = raw_value.j()?;
             trace!("Map Java Long to JS BigInteger");
-            ProxiedJavaValue::BigInteger(value)
+            Ok(ProxiedJavaValue::BigInteger(value))
         } else {
-            let raw_value = env.call_method(&obj, "toString", "()Ljava/lang/String;", &[]);
-            let str: JString = raw_value.unwrap().l().unwrap().into();
-            let plain: String = env.get_string(&str).unwrap().into();
+            let raw_value = env.call_method(&obj, "toString", "()Ljava/lang/String;", &[])?;
+            let str: JString = raw_value.l()?.into();
+            let plain: String = env.get_string(&str)?.into();
             trace!("Map unsupported Java type to JS by calling toString()",);
-            ProxiedJavaValue::String(plain)
+            Ok(ProxiedJavaValue::String(plain))
         }
     }
 }
@@ -710,21 +732,20 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
     fn into_js(self, ctx: &rquickjs::Ctx<'js>) -> rquickjs::Result<Value<'js>> {
         let result = match self {
             ProxiedJavaValue::Throwable(msg, class_name, file, line) => {
-                let exception = Exception::from_message(ctx.clone(), &msg).unwrap();
-                exception
-                    .set("original_java_exception_class", class_name)
-                    .unwrap();
+                let exception = Exception::from_message(ctx.clone(), &msg)?;
+                exception.set("original_java_exception_class", class_name)?;
 
-                exception.set("original_java_exception_line", line).unwrap();
-                exception.set("original_java_exception_file", file).unwrap();
+                exception.set("original_java_exception_line", line)?;
+                exception.set("original_java_exception_file", file)?;
 
                 let v = Value::from_exception(exception);
                 Err(ctx.throw(v))
             }
             ProxiedJavaValue::Null => Ok(Value::new_null(ctx.clone())),
-            ProxiedJavaValue::String(str) => Ok(Value::from_string(
-                rquickjs::String::from_str(ctx.clone(), str.as_str()).unwrap(),
-            )),
+            ProxiedJavaValue::String(str) => Ok(Value::from_string(rquickjs::String::from_str(
+                ctx.clone(),
+                str.as_str(),
+            )?)),
             ProxiedJavaValue::Double(v) => Ok(Value::new_float(ctx.clone(), v)),
             ProxiedJavaValue::Int(v) => Ok(Value::new_int(ctx.clone(), v)),
             ProxiedJavaValue::Bool(v) => Ok(Value::new_bool(ctx.clone(), v)),
@@ -734,31 +755,30 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
                 s
             }
             ProxiedJavaValue::BigInteger(v) => {
-                let bi = BigInt::from_i64(ctx.clone(), v).unwrap();
+                let bi = BigInt::from_i64(ctx.clone(), v)?;
                 let s = Value::from_big_int(bi);
                 Ok(s)
             }
             ProxiedJavaValue::Function(f) => {
-                let func = Function::new(ctx.clone(), f).unwrap();
+                let func = Function::new(ctx.clone(), f)?;
                 let s = Value::from_function(func);
                 Ok(s)
             }
             ProxiedJavaValue::Supplier(f) => {
-                let func = Function::new(ctx.clone(), f).unwrap();
+                let func = Function::new(ctx.clone(), f)?;
                 let s = Value::from_function(func);
                 Ok(s)
             }
             ProxiedJavaValue::BiFunction(f) => {
-                let func = Function::new(ctx.clone(), f).unwrap();
+                let func = Function::new(ctx.clone(), f)?;
                 let s = Value::from_function(func);
                 Ok(s)
             }
             ProxiedJavaValue::Map(values) => {
-                let obj = rquickjs::Object::new(ctx.clone()).unwrap();
+                let obj = rquickjs::Object::new(ctx.clone())?;
 
                 for value in values.into_iter() {
-                    obj.set(value.0.as_str(), value.1.into_js(ctx).unwrap())
-                        .unwrap();
+                    obj.set(value.0, value.1)?;
                 }
                 let s = Value::from_object(obj);
                 Ok(s)
@@ -775,24 +795,24 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
                 Ok(s)
             }
             ProxiedJavaValue::Array(mut values) => {
-                let obj = rquickjs::Array::new(ctx.clone()).unwrap();
+                let obj = rquickjs::Array::new(ctx.clone())?;
 
                 for i in 0..values.len() {
                     let value = values.remove(0);
-                    let value = value.into_js(ctx).unwrap();
-                    obj.set(i, value).unwrap();
+                    let value = value.into_js(ctx)?;
+                    obj.set(i, value)?;
                 }
 
                 Ok(Value::from_array(obj))
             }
             ProxiedJavaValue::VarFunction(f) => {
-                let func = Function::new::<JObject, VariadicFunction>(ctx.clone(), f).unwrap();
+                let func = Function::new::<JObject, VariadicFunction>(ctx.clone(), f)?;
                 let s = Value::from_function(func);
                 Ok(s)
             }
             ProxiedJavaValue::NativeArray(array_ptr) => {
                 let array_ptr = ptr_to_persistent(array_ptr);
-                let array = array_ptr.clone().restore(ctx).unwrap();
+                let array = array_ptr.clone().restore(ctx)?;
                 let s = Value::from_array(array);
 
                 // Prevents dropping the array
@@ -802,7 +822,7 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
             }
             ProxiedJavaValue::NativeObject(object_ptr) => {
                 let object_ptr = js_object::ptr_to_persistent(object_ptr);
-                let object = object_ptr.clone().restore(ctx).unwrap();
+                let object = object_ptr.clone().restore(ctx)?;
                 let s = Value::from_object(object);
 
                 // Prevents dropping the object
@@ -890,7 +910,7 @@ mod tests {
             )
             .expect("Failed to create Double object from value");
         let object = result.l().unwrap();
-        let proxy = ProxiedJavaValue::from_object(&mut env, &JObject::null(), object);
+        let proxy = ProxiedJavaValue::from_object(&mut env, &JObject::null(), object).unwrap();
 
         if let ProxiedJavaValue::Double(v) = proxy {
             assert_eq!(value, v);
