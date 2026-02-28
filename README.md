@@ -4,6 +4,10 @@
 
 This is a Java library to use [QuickJS from Fabrice Bellard](https://bellard.org/quickjs/) with Java. It uses a native library build with Rust which uses [rquickjs](https://github.com/DelSkayn/rquickjs) to interface QuickJS and [jni-rs](https://github.com/jni-rs/jni-rs) for Java - Rust interop.
 
+
+ > **_INFO:_** Please checkout my new project [quickjs-wasm-java](https://github.com/StefanRichterHuber/quickjs-wasm-java) which is also a QuickJS runtime for java but without any native dependencies at runtime but based on Webassembly. Also provides async / await support.
+
+
 ## Why another JavaScript runtime for Java?
 
 There are several (more) mature JavaScript runtimes for Java like
