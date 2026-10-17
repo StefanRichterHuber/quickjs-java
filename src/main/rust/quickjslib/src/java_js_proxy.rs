@@ -634,7 +634,7 @@ impl<'js> IntoJs<'js> for ProxiedJavaValue {
 #[cfg(test)]
 mod tests {
 
-    use jni::{jni_sig, jni_str, objects::JObject, objects::JValue, InitArgsBuilder, JNIVersion, JavaVM};
+    use jni::{jni_sig, jni_str, objects::JValue, InitArgsBuilder, JNIVersion, JavaVM};
     use log::trace;
     use rquickjs::{Context, IntoJs, Runtime};
 
