@@ -1,5 +1,0 @@
-[build]
-default-target = "x86_64-unknown-linux-gnu" # use this target if none is explicitly provided
-pre-build = [
-    "apt-get update && apt-get install --assume-yes --no-install-recommends libclang-10-dev clang-10 patch",
-]
