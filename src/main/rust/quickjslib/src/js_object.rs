@@ -1,22 +1,53 @@
 use crate::{
-    context::{self, context_to_ptr},
+    context::{self, JQuickJSContext},
+    handles::ObjectHandle,
     java_js_proxy,
     js_java_proxy::{self, JSJavaProxy},
 };
 use jni::{
-    objects::JObject,
+    bind_java_type,
+    objects::{JClass, JObject, JSet},
     sys::{jboolean, jint, jlong},
-    JNIEnv,
+    Env,
 };
 use log::trace;
 use rquickjs::{object::ObjectKeysIter, Ctx, Object, Persistent};
+
+bind_java_type! {
+    rust_type = pub JQuickJSObject,
+    java_type = "io.github.stefanrichterhuber.quickjs.QuickJSObject",
+
+    type_map = {
+        JQuickJSContext => "io.github.stefanrichterhuber.quickjs.QuickJSContext",
+        unsafe ObjectHandle => long,
+    },
+
+    fields {
+        ptr: jlong,
+    },
+
+    constructors {
+        fn new(ptr: jlong, ctx: JQuickJSContext),
+    },
+
+    native_methods {
+        extern static fn close_object(handle: ObjectHandle),
+        extern static fn get_object_size(handle: ObjectHandle, ctx: JQuickJSContext) -> jint,
+        extern static fn create_native_object(ctx: JQuickJSContext) -> jlong,
+        extern static fn set_value(handle: ObjectHandle, ctx: JQuickJSContext, key: JObject, value: JObject) -> jboolean,
+        extern static fn get_value(handle: ObjectHandle, ctx: JQuickJSContext, key: JObject) -> JObject,
+        extern static fn contains_key(handle: ObjectHandle, ctx: JQuickJSContext, key: JObject) -> jboolean,
+        extern static fn remove_value(handle: ObjectHandle, ctx: JQuickJSContext, key: JObject) -> jboolean,
+        extern static fn key_set(handle: ObjectHandle, ctx: JQuickJSContext) -> JSet,
+    },
+}
 
 /// Helper function to get a mutable reference to the object
 ///
 /// # Arguments
 ///
-/// * `_env` - The JNI environment
-/// * `object_ptr` - The pointer to the persistent object
+/// * `env` - The JNI environment
+/// * `handle` - The handle of the persistent object
 /// * `context_object` - The context object
 /// * `f` - The function to call with the object
 ///
@@ -24,299 +55,178 @@ use rquickjs::{object::ObjectKeysIter, Ctx, Object, Persistent};
 ///
 /// The result of the function
 fn with_object<'java, F, R>(
-    mut _env: JNIEnv<'java>,
-    object_ptr: jlong,
-    context_object: JObject<'java>,
+    env: &mut Env<'java>,
+    handle: ObjectHandle,
+    context_object: &JQuickJSContext<'_>,
     f: F,
-) -> R
+) -> jni::errors::Result<R>
 where
-    for<'js> F: FnOnce(&mut JNIEnv<'java>, JObject<'java>, Ctx<'js>, Object<'js>) -> R,
+    for<'js> F: FnOnce(&mut Env<'java>, Ctx<'js>, Object<'js>) -> R,
     R: 'java,
 {
-    let object_ptr = ptr_to_persistent(object_ptr);
-    let context = context::get_context_from_quickjs_context(&mut _env, &context_object);
+    let object = unsafe { handle.as_ref() };
+    let context = context::get_context_from_quickjs_context(env, context_object)?;
 
-    let result = context::with_context(&context, |ctx| {
-        let obj = object_ptr.clone().restore(&ctx).unwrap();
-        f(&mut _env, context_object, ctx, obj)
-    });
-
-    // Prevents dropping the array
-    _ = persistent_to_ptr(object_ptr);
-
-    // Prevents dropping the context
-    _ = context_to_ptr(context);
-    result
+    Ok(context::with_context(context, |ctx| {
+        let obj = object.clone().restore(&ctx).unwrap();
+        f(env, ctx, obj)
+    }))
 }
 
-/// Converts a pointer to a persistent array
-///
-/// # Arguments
-///
-/// * `array_ptr` - The pointer to the persistent array
-///
-/// # Returns
-///
-/// A persistent array
-pub(crate) fn ptr_to_persistent<'js>(array_ptr: jlong) -> Box<Persistent<Object<'static>>> {
-    unsafe { Box::from_raw(array_ptr as *mut Persistent<Object<'static>>) }
-}
-
-/// Converts a persistent array to a pointer
-///
-/// # Arguments
-///
-/// * `array` - The persistent array to convert
-///
-/// # Returns
-///
-/// A pointer to the persistent array
-pub(crate) fn persistent_to_ptr<'js>(array: Box<Persistent<Object<'static>>>) -> jlong {
-    Box::into_raw(array) as jlong
-}
-
-/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSObject.createNativeObject
-#[no_mangle]
-pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSObject_createNativeObject<
-    'a,
->(
-    mut _env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-    ctx: JObject<'a>,
-) -> jlong {
-    let context = context::get_context_from_quickjs_context(&mut _env, &ctx);
-
-    let result = context::with_context(&context, |ctx| {
-        let js_object = rquickjs::Object::new(ctx.clone()).unwrap();
-        let persistent = Persistent::save(&ctx, js_object);
-        persistent
-    });
-
-    trace!("Called QuickJSObject.createNativeObject()");
-    let result = Box::new(result);
-
-    // Prevents dropping the context
-    _ = context_to_ptr(context);
-
-    persistent_to_ptr(result)
-}
-
-/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSObject.closeObject
-#[no_mangle]
-pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSObject_closeObject<'a>(
-    mut _env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-    object_ptr: jlong,
-) {
-    trace!("Closed QuickJSObject with id {}", object_ptr);
-    let runtime = ptr_to_persistent(object_ptr);
-    drop(runtime);
-}
-
-/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSObject.getObjectSize
-#[no_mangle]
-pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSObject_getObjectSize<'a>(
-    mut _env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-    object_ptr: jlong,
-    ctx: JObject<'a>,
-) -> jint {
-    let result = with_object(_env, object_ptr, ctx, |mut _env, _, _, object| {
-        object.len() as jint
-    });
-    result
-}
-
-/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSObject.setValue
-#[no_mangle]
-pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSObject_setValue<'a>(
-    mut env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-    object_ptr: jlong,
-    ctx: JObject<'a>,
-    key: JObject<'a>,
-    value: JObject<'a>,
-) -> jboolean {
-    let value = match java_js_proxy::ProxiedJavaValue::from_object(&mut env, &ctx, value) {
-        Ok(value) => value,
+/// Converts the given Java key into a JS value. Throws a `QuickJSScriptException` and returns `None` if not possible.
+fn convert_key<'local>(
+    env: &mut Env<'local>,
+    ctx: &JQuickJSContext<'_>,
+    key: JObject<'local>,
+) -> Option<java_js_proxy::ProxiedJavaValue> {
+    match java_js_proxy::ProxiedJavaValue::from_object(env, ctx, key) {
+        Ok(key) => Some(key),
         Err(e) => {
-            env.throw_new(
-                "io/github/stefanrichterhuber/quickjs/QuickJSScriptException",
-                e.to_string(),
-            )
-            .unwrap();
-            return false as jboolean;
+            context::throw_script_exception(env, e.to_string());
+            None
         }
-    };
+    }
+}
 
-    let key = match java_js_proxy::ProxiedJavaValue::from_object(&mut env, &ctx, key) {
-        Ok(key) => key,
-        Err(e) => {
-            env.throw_new(
-                "io/github/stefanrichterhuber/quickjs/QuickJSScriptException",
-                e.to_string(),
-            )
-            .unwrap();
-            return false as jboolean;
-        }
-    };
+impl JQuickJSObjectNativeInterface for JQuickJSObjectAPI {
+    type Error = jni::errors::Error;
 
-    with_object(
-        env,
-        object_ptr,
-        ctx,
-        |mut _env, context_object, _ctx, object| {
-            let s: Result<(), _> = object.set(key, value);
-            if s.is_err() {
-                context::handle_exception(s.err().unwrap(), &_ctx, &context_object, &mut _env);
+    fn close_object<'local>(
+        _env: &mut Env<'local>,
+        _class: JClass<'local>,
+        handle: ObjectHandle,
+    ) -> Result<(), Self::Error> {
+        trace!("Closed QuickJSObject {:?}", handle);
+        drop(unsafe { handle.into_box() });
+        Ok(())
+    }
+
+    fn get_object_size<'local>(
+        env: &mut Env<'local>,
+        _class: JClass<'local>,
+        handle: ObjectHandle,
+        ctx: JQuickJSContext<'local>,
+    ) -> Result<jint, Self::Error> {
+        with_object(env, handle, &ctx, |_env, _ctx, object| object.len() as jint)
+    }
+
+    fn create_native_object<'local>(
+        env: &mut Env<'local>,
+        _class: JClass<'local>,
+        ctx: JQuickJSContext<'local>,
+    ) -> Result<jlong, Self::Error> {
+        let context = context::get_context_from_quickjs_context(env, &ctx)?;
+
+        let result = context::with_context(context, |ctx| {
+            let js_object = rquickjs::Object::new(ctx.clone()).unwrap();
+            Persistent::save(&ctx, js_object)
+        });
+
+        trace!("Called QuickJSObject.createNativeObject()");
+        Ok(ObjectHandle::new(result).into())
+    }
+
+    fn set_value<'local>(
+        env: &mut Env<'local>,
+        _class: JClass<'local>,
+        handle: ObjectHandle,
+        ctx: JQuickJSContext<'local>,
+        key: JObject<'local>,
+        value: JObject<'local>,
+    ) -> Result<jboolean, Self::Error> {
+        let Some(value) = convert_key(env, &ctx, value) else {
+            return Ok(false);
+        };
+        let Some(key) = convert_key(env, &ctx, key) else {
+            return Ok(false);
+        };
+
+        with_object(env, handle, &ctx, |env, ctx, object| {
+            if let Err(e) = object.set(key, value) {
+                context::handle_exception(e, &ctx, env);
             }
-        },
-    );
+        })?;
 
-    true as jboolean
-}
+        Ok(true)
+    }
 
-/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSObject.getValue
-#[no_mangle]
-pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSObject_getValue<'a>(
-    mut env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-    object_ptr: jlong,
-    context_object: JObject<'a>,
-    key: JObject<'a>,
-) -> JObject<'a> {
-    let key = match java_js_proxy::ProxiedJavaValue::from_object(&mut env, &context_object, key) {
-        Ok(key) => key,
-        Err(e) => {
-            env.throw_new(
-                "io/github/stefanrichterhuber/quickjs/QuickJSScriptException",
-                e.to_string(),
-            )
-            .unwrap();
-            return JObject::null();
-        }
-    };
+    fn get_value<'local>(
+        env: &mut Env<'local>,
+        _class: JClass<'local>,
+        handle: ObjectHandle,
+        ctx: JQuickJSContext<'local>,
+        key: JObject<'local>,
+    ) -> Result<JObject<'local>, Self::Error> {
+        let Some(key) = convert_key(env, &ctx, key) else {
+            return Ok(JObject::null());
+        };
 
-    let value = with_object(
-        env,
-        object_ptr,
-        context_object,
-        |mut env, context_object, _ctx, object| {
-            let s: Result<JSJavaProxy, _> = object.get(key).unwrap();
-            let value = match s {
-                Ok(s) => s.into_jobject(&context_object, &mut env).unwrap(),
+        with_object(env, handle, &ctx, |env, js_ctx, object| {
+            let s: Result<JSJavaProxy, _> = object.get(key);
+            match s {
+                Ok(s) => s.into_jobject(&ctx, env).unwrap(),
                 Err(e) => {
-                    context::handle_exception(e, &_ctx, &context_object, &mut env);
+                    context::handle_exception(e, &js_ctx, env);
                     JObject::null()
                 }
-            };
-            value
-        },
-    );
+            }
+        })
+    }
 
-    value
-}
+    fn contains_key<'local>(
+        env: &mut Env<'local>,
+        _class: JClass<'local>,
+        handle: ObjectHandle,
+        ctx: JQuickJSContext<'local>,
+        key: JObject<'local>,
+    ) -> Result<jboolean, Self::Error> {
+        let Some(key) = convert_key(env, &ctx, key) else {
+            return Ok(false);
+        };
 
-/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSObject.containsKey
-#[no_mangle]
-pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSObject_containsKey<'a>(
-    mut env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-    object_ptr: jlong,
-    context_object: JObject<'a>,
-    key: JObject<'a>,
-) -> jboolean {
-    let key = match java_js_proxy::ProxiedJavaValue::from_object(&mut env, &context_object, key) {
-        Ok(key) => key,
-        Err(e) => {
-            env.throw_new(
-                "io/github/stefanrichterhuber/quickjs/QuickJSScriptException",
-                e.to_string(),
-            )
-            .unwrap();
-            return false as jboolean;
-        }
-    };
-
-    let value = with_object(
-        env,
-        object_ptr,
-        context_object,
-        |mut env, context_object, _ctx, object| {
-            let s: Result<bool, _> = object.contains_key(key);
-            match s {
+        with_object(env, handle, &ctx, |env, ctx, object| {
+            match object.contains_key(key) {
                 Ok(s) => s,
                 Err(e) => {
-                    context::handle_exception(e, &_ctx, &context_object, &mut env);
+                    context::handle_exception(e, &ctx, env);
                     false
                 }
             }
-        },
-    );
+        })
+    }
 
-    value as jboolean
-}
+    fn remove_value<'local>(
+        env: &mut Env<'local>,
+        _class: JClass<'local>,
+        handle: ObjectHandle,
+        ctx: JQuickJSContext<'local>,
+        key: JObject<'local>,
+    ) -> Result<jboolean, Self::Error> {
+        let Some(key) = convert_key(env, &ctx, key) else {
+            return Ok(false);
+        };
 
-/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSObject.removeValue
-#[no_mangle]
-pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSObject_removeValue<'a>(
-    mut env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-    object_ptr: jlong,
-    context_object: JObject<'a>,
-    key: JObject<'a>,
-) -> jboolean {
-    let key = match java_js_proxy::ProxiedJavaValue::from_object(&mut env, &context_object, key) {
-        Ok(key) => key,
-        Err(e) => {
-            env.throw_new(
-                "io/github/stefanrichterhuber/quickjs/QuickJSScriptException",
-                e.to_string(),
-            )
-            .unwrap();
-            return false as jboolean;
-        }
-    };
-
-    let value = with_object(
-        env,
-        object_ptr,
-        context_object,
-        |mut env, context_object, _ctx, object| {
-            let s: Result<(), _> = object.remove(key);
-            match s {
+        with_object(env, handle, &ctx, |env, ctx, object| {
+            match object.remove(key) {
                 Ok(_) => true,
                 Err(e) => {
-                    context::handle_exception(e, &_ctx, &context_object, &mut env);
+                    context::handle_exception(e, &ctx, env);
                     false
                 }
             }
-        },
-    );
+        })
+    }
 
-    value as jboolean
-}
-
-/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSObject.keySet
-#[no_mangle]
-pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSObject_keySet<'vm>(
-    env: JNIEnv<'vm>,
-    _obj: JObject<'vm>,
-    object_ptr: jlong,
-    context_object: JObject<'vm>,
-) -> JObject<'vm> {
-    let value = with_object(
-        env,
-        object_ptr,
-        context_object,
-        |env, ctx_object, _ctx, object| {
+    fn key_set<'local>(
+        env: &mut Env<'local>,
+        _class: JClass<'local>,
+        handle: ObjectHandle,
+        ctx: JQuickJSContext<'local>,
+    ) -> Result<JSet<'local>, Self::Error> {
+        let set = with_object(env, handle, &ctx, |env, _js_ctx, object| {
             let object_keys: ObjectKeysIter<'_, JSJavaProxy<'_>> = object.keys();
-            let java_set =
-                js_java_proxy::create_java_set_from_object_keys_iter(&ctx_object, env, object_keys);
-
-            java_set
-        },
-    );
-
-    value
+            js_java_proxy::create_java_set_from_object_keys_iter(&ctx, env, object_keys)
+        })??;
+        Ok(set.into())
+    }
 }

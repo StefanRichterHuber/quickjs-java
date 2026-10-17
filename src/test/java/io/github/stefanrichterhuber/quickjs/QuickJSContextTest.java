@@ -790,7 +790,7 @@ public class QuickJSContextTest {
 
             // We need a huge memory limit just for the callback, and some bytes extra for
             // the array
-            runtime.withMemoryLimit(90000);
+            runtime.withMemoryLimit(120000);
 
             AtomicInteger ai = new AtomicInteger(0);
 

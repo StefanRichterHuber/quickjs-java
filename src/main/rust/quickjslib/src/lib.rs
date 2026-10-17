@@ -4,6 +4,8 @@
 
 pub mod context;
 pub mod foreign_function;
+mod handles;
+mod java_types;
 mod java_js_proxy;
 pub mod js_array;
 mod js_java_proxy;

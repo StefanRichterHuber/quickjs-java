@@ -1,126 +1,105 @@
-use std::rc::Rc;
-
 use jni::{
-    objects::{JObject, JValue},
-    signature::ReturnType,
+    bind_java_type,
+    objects::JClass,
     sys::{jint, jlong},
-    JNIEnv,
+    Env, JavaVM,
 };
-use log::{debug, Level, LevelFilter};
+use log::{debug, warn, Level, LevelFilter};
 use rquickjs::Runtime;
 
-// ---------------------- io.github.stefanrichterhuber.quickjs.QuickJSRuntime
-/// Implementation io.github.stefanrichterhuber.quickjs.QuickJSRuntime.createRuntime()
-#[no_mangle]
-pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSRuntime_createRuntime<
-    'a,
->(
-    mut _env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-) -> jlong {
-    debug!("Created new QuickJS runtime");
+use crate::handles::RuntimeHandle;
 
-    let runtime = Runtime::new().unwrap();
+bind_java_type! {
+    rust_type = pub JQuickJSRuntime,
+    java_type = "io.github.stefanrichterhuber.quickjs.QuickJSRuntime",
 
-    // Configure callback to runtime to allow java to interrupt running JS script
-    let target = Rc::new(_env.new_global_ref(_obj).unwrap());
-    let js_interrupt_id = _env
-        .get_method_id(
-            "io/github/stefanrichterhuber/quickjs/QuickJSRuntime",
-            "jsInterrupt",
-            "()Z",
-        )
-        .unwrap();
-    let vm = _env.get_java_vm().unwrap();
+    type_map = {
+        unsafe RuntimeHandle => long,
+    },
 
-    let handler = move || {
-        let mut env = vm.get_env().unwrap();
+    methods {
+        fn js_interrupt() -> jboolean,
+        static fn runtime_log(level: jint, message: JString),
+    },
 
-        let result = unsafe {
-            env.call_method_unchecked(
-                target.as_ref(),
-                js_interrupt_id,
-                ReturnType::Primitive(jni::signature::Primitive::Boolean),
-                &[],
-            )
-            .unwrap()
+    native_methods {
+        extern fn create_runtime() -> jlong,
+        extern static fn close_runtime(handle: RuntimeHandle),
+        extern static fn init_logging(level: jint),
+        extern static fn set_memory_limit(handle: RuntimeHandle, limit: jlong),
+        extern static fn set_max_stack_size(handle: RuntimeHandle, size: jlong),
+    },
+}
+
+impl JQuickJSRuntimeNativeInterface for JQuickJSRuntimeAPI {
+    type Error = jni::errors::Error;
+
+    fn create_runtime<'local>(
+        env: &mut Env<'local>,
+        this: JQuickJSRuntime<'local>,
+    ) -> Result<jlong, Self::Error> {
+        debug!("Created new QuickJS runtime");
+
+        let runtime = Runtime::new().expect("Failed to create QuickJS runtime");
+
+        // Configure callback to runtime to allow java to interrupt running JS script
+        let target = env.new_global_ref(&this)?;
+        let vm = env.get_java_vm()?;
+
+        let handler = move || {
+            vm.attach_current_thread(|env| target.js_interrupt(env))
+                .unwrap_or(false)
         };
-        result.z().unwrap()
-    };
 
-    runtime.set_interrupt_handler(Some(Box::new(handler)));
+        runtime.set_interrupt_handler(Some(Box::new(handler)));
 
-    Box::into_raw(Box::new(runtime)) as jlong
-}
+        Ok(RuntimeHandle::new(runtime).into())
+    }
 
-/// Converts a pointer to a runtime back to a Box<Runtime>.
-pub(crate) fn ptr_to_runtime(runtime_ptr: jlong) -> Box<Runtime> {
-    unsafe { Box::from_raw(runtime_ptr as *mut Runtime) }
-}
+    fn close_runtime<'local>(
+        _env: &mut Env<'local>,
+        _class: JClass<'local>,
+        handle: RuntimeHandle,
+    ) -> Result<(), Self::Error> {
+        debug!("Closed QuickJS runtime");
+        drop(unsafe { handle.into_box() });
+        Ok(())
+    }
 
-pub(crate) fn runtime_to_ptr(runtime: Box<Runtime>) -> jlong {
-    Box::into_raw(runtime) as jlong
-}
+    fn init_logging<'local>(
+        env: &mut Env<'local>,
+        _class: JClass<'local>,
+        level: jint,
+    ) -> Result<(), Self::Error> {
+        init_logging(env, level)
+    }
 
-/// Implementation io.github.stefanrichterhuber.quickjs.QuickJSRuntime.closeRuntime(long ptr)
-#[no_mangle]
-pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSRuntime_closeRuntime<'a>(
-    mut _env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-    runtime_ptr: jlong,
-) {
-    debug!("Closed QuickJS runtime");
-    let runtime = ptr_to_runtime(runtime_ptr);
-    drop(runtime);
-}
+    fn set_memory_limit<'local>(
+        _env: &mut Env<'local>,
+        _class: JClass<'local>,
+        handle: RuntimeHandle,
+        limit: jlong,
+    ) -> Result<(), Self::Error> {
+        debug!("Setting QuickJS runtime memory limit to {} bytes", limit);
+        unsafe { handle.as_ref() }.set_memory_limit(limit as usize);
+        Ok(())
+    }
 
-/// Implementation io.github.stefanrichterhuber.quickjs.QuickJSRuntime.setMemoryLimit(long ptr, long limit)
-#[no_mangle]
-pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSRuntime_setMemoryLimit<
-    'a,
->(
-    mut _env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-    runtime_ptr: jlong,
-    limit: jlong,
-) {
-    debug!("Setting QuickJS runtime memory limit to {} bytes", limit);
-    let runtime = ptr_to_runtime(runtime_ptr);
-
-    let limit = limit as usize;
-    runtime.set_memory_limit(limit);
-
-    // Prevents dropping the runtime
-    _ = runtime_to_ptr(runtime);
-}
-
-/// Implementation io.github.stefanrichterhuber.quickjs.QuickJSRuntime.setMaxStackSize(long ptr, long limit)
-#[no_mangle]
-pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSRuntime_setMaxStackSize<
-    'a,
->(
-    mut _env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-    runtime_ptr: jlong,
-    limit: jlong,
-) {
-    debug!(
-        "Setting QuickJS runtime stack size limit to {} bytes",
-        limit
-    );
-    let runtime = ptr_to_runtime(runtime_ptr);
-
-    let limit = limit as usize;
-    runtime.set_max_stack_size(limit);
-
-    // Prevents dropping the runtime
-    _ = runtime_to_ptr(runtime);
+    fn set_max_stack_size<'local>(
+        _env: &mut Env<'local>,
+        _class: JClass<'local>,
+        handle: RuntimeHandle,
+        size: jlong,
+    ) -> Result<(), Self::Error> {
+        debug!("Setting QuickJS runtime stack size limit to {} bytes", size);
+        unsafe { handle.as_ref() }.set_max_stack_size(size as usize);
+        Ok(())
+    }
 }
 
 /// Base for custom `log::Log` implementation, which allows delegating log output to the Java runtime.
 struct JavaLogContext {
-    method_id: jni::objects::JStaticMethodID,
-    vm: jni::JavaVM,
+    vm: JavaVM,
     level: Level,
 }
 
@@ -137,27 +116,17 @@ impl log::Log for JavaLogContext {
 
     fn log(&self, record: &log::Record) {
         if self.enabled(record.metadata()) {
-            // Only do JVM call if message would be logged at all
-            let method_id = self.method_id;
-
-            let mut env: JNIEnv<'_> = self.vm.get_env().unwrap();
-            let level_int = record.level() as i32;
-            let message = format!("{} {}", record.metadata().target(), record.args());
-
-            if let Ok(message_string) = env.new_string(message) {
-                let _result = unsafe {
-                    env.call_static_method_unchecked(
-                        "io/github/stefanrichterhuber/quickjs/QuickJSRuntime",
-                        method_id,
-                        ReturnType::Primitive(jni::signature::Primitive::Void),
-                        &[
-                            JValue::Int(level_int).as_jni(),
-                            JValue::Object(&message_string).as_jni(),
-                        ],
-                    )
-                }
-                .unwrap();
-            }
+            // Only do JVM call if message would be logged at all.
+            // Attaching (instead of reusing the current frame) stashes any pending Java exception while logging
+            let _result: Result<(), jni::errors::Error> = self.vm.attach_current_thread(|env| {
+                let level = record.level() as jint;
+                let message = env.new_string(format!(
+                    "{} {}",
+                    record.metadata().target(),
+                    record.args()
+                ))?;
+                JQuickJSRuntime::runtime_log(env, level, message)
+            });
         }
     }
 
@@ -166,25 +135,11 @@ impl log::Log for JavaLogContext {
     }
 }
 
-/// Implementation io.github.stefanrichterhuber.quickjs.QuickJSRuntime.initLogging()
 /// Configures the `log` crate with `std` features to call back to java with each log message
 /// see https://docs.rs/log/latest/log/
-#[no_mangle]
-pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSRuntime_initLogging<'a>(
-    mut _env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-    level: jint,
-) {
+fn init_logging(env: &mut Env<'_>, level: jint) -> Result<(), jni::errors::Error> {
     if level > 0 {
-        let log_id = _env
-            .get_static_method_id(
-                "io/github/stefanrichterhuber/quickjs/QuickJSRuntime",
-                "runtimeLog",
-                "(ILjava/lang/String;)V",
-            )
-            .unwrap();
-
-        let vm = _env.get_java_vm().unwrap();
+        let vm = env.get_java_vm()?;
 
         let lvl = match level {
             1 => Level::Error,
@@ -203,14 +158,12 @@ pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSRuntime_
             _ => LevelFilter::Error,
         };
 
-        let log_context = JavaLogContext {
-            method_id: log_id,
-            vm,
-            level: lvl,
-        };
+        let log_context = JavaLogContext { vm, level: lvl };
 
-        log::set_boxed_logger(Box::new(log_context))
-            .map(|()| log::set_max_level(filter))
-            .unwrap();
+        match log::set_boxed_logger(Box::new(log_context)).map(|()| log::set_max_level(filter)) {
+            Ok(_) => debug!("Native logging redirect to java log4j initialized"),
+            Err(_) => warn!("Native logging redirect already configured. Second configuration fails"),
+        };
     }
+    Ok(())
 }

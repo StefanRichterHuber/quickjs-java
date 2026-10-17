@@ -1,22 +1,52 @@
 use crate::{
-    context::{self, context_to_ptr},
+    context::{self, JQuickJSContext},
+    handles::ArrayHandle,
     java_js_proxy,
     js_java_proxy::JSJavaProxy,
 };
 use jni::{
-    objects::JObject,
+    bind_java_type,
+    objects::{JClass, JObject},
     sys::{jboolean, jint, jlong},
-    JNIEnv,
+    Env,
 };
 use log::trace;
 use rquickjs::{function::This, Array, Ctx, Function, Persistent};
+
+bind_java_type! {
+    rust_type = pub JQuickJSArray,
+    java_type = "io.github.stefanrichterhuber.quickjs.QuickJSArray",
+
+    type_map = {
+        JQuickJSContext => "io.github.stefanrichterhuber.quickjs.QuickJSContext",
+        unsafe ArrayHandle => long,
+    },
+
+    fields {
+        ptr: jlong,
+    },
+
+    constructors {
+        fn new(ptr: jlong, ctx: JQuickJSContext),
+    },
+
+    native_methods {
+        extern static fn close_array(handle: ArrayHandle),
+        extern static fn get_array_size(handle: ArrayHandle, ctx: JQuickJSContext) -> jint,
+        extern static fn create_native_array(ctx: JQuickJSContext) -> jlong,
+        extern static fn set_value(handle: ArrayHandle, ctx: JQuickJSContext, index: jint, value: JObject) -> jboolean,
+        extern static fn add_value(handle: ArrayHandle, ctx: JQuickJSContext, index: jint, value: JObject) -> jboolean,
+        extern static fn get_value(handle: ArrayHandle, ctx: JQuickJSContext, index: jint) -> JObject,
+        extern static fn remove_value(handle: ArrayHandle, ctx: JQuickJSContext, index: jint) -> jboolean,
+    },
+}
 
 /// Helper function to get a mutable reference to the array
 ///
 /// # Arguments
 ///
-/// * `_env` - The JNI environment
-/// * `array_ptr` - The pointer to the persistent array
+/// * `env` - The JNI environment
+/// * `handle` - The handle of the persistent array
 /// * `context_object` - The context object
 /// * `f` - The function to call with the array
 ///
@@ -24,217 +54,146 @@ use rquickjs::{function::This, Array, Ctx, Function, Persistent};
 ///
 /// The result of the function
 fn with_array<'java, F, R>(
-    mut _env: JNIEnv<'java>,
-    array_ptr: jlong,
-    context_object: JObject<'java>,
+    env: &mut Env<'java>,
+    handle: ArrayHandle,
+    context_object: &JQuickJSContext<'_>,
     f: F,
-) -> R
+) -> jni::errors::Result<R>
 where
-    for<'js> F: FnOnce(&mut JNIEnv<'java>, JObject<'java>, Ctx<'js>, Array<'js>) -> R,
+    for<'js> F: FnOnce(&mut Env<'java>, Ctx<'js>, Array<'js>) -> R,
     R: 'java,
 {
-    let array_ptr = ptr_to_persistent(array_ptr);
-    let context = context::get_context_from_quickjs_context(&mut _env, &context_object);
+    let array = unsafe { handle.as_ref() };
+    let context = context::get_context_from_quickjs_context(env, context_object)?;
 
-    let result = context::with_context(&context, |ctx| {
-        let array = array_ptr.clone().restore(&ctx).unwrap();
-        f(&mut _env, context_object, ctx, array)
-    });
-
-    // Prevents dropping the array
-    _ = persistent_to_ptr(array_ptr);
-
-    // Prevents dropping the context
-    _ = context_to_ptr(context);
-    result
+    Ok(context::with_context(context, |ctx| {
+        let array = array.clone().restore(&ctx).unwrap();
+        f(env, ctx, array)
+    }))
 }
 
-/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSArray.createNativeArray
-#[no_mangle]
-pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSArray_createNativeArray<
-    'a,
->(
-    mut _env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-    ctx: JObject<'a>,
-) -> jlong {
-    let context = context::get_context_from_quickjs_context(&mut _env, &ctx);
+impl JQuickJSArrayNativeInterface for JQuickJSArrayAPI {
+    type Error = jni::errors::Error;
 
-    let result = context::with_context(&context, |ctx| {
-        let js_array = rquickjs::Array::new(ctx.clone()).unwrap();
-        let persistent = Persistent::save(&ctx, js_array);
-        persistent
-    });
+    fn close_array<'local>(
+        _env: &mut Env<'local>,
+        _class: JClass<'local>,
+        handle: ArrayHandle,
+    ) -> Result<(), Self::Error> {
+        trace!("Closed QuickJSArray {:?}", handle);
+        drop(unsafe { handle.into_box() });
+        Ok(())
+    }
 
-    trace!("Called QuickJSArray.createNativeArray()");
-    let result = Box::new(result);
+    fn get_array_size<'local>(
+        env: &mut Env<'local>,
+        _class: JClass<'local>,
+        handle: ArrayHandle,
+        ctx: JQuickJSContext<'local>,
+    ) -> Result<jint, Self::Error> {
+        with_array(env, handle, &ctx, |_env, _ctx, array| array.len() as jint)
+    }
 
-    // Prevents dropping the context
-    _ = context_to_ptr(context);
+    fn create_native_array<'local>(
+        env: &mut Env<'local>,
+        _class: JClass<'local>,
+        ctx: JQuickJSContext<'local>,
+    ) -> Result<jlong, Self::Error> {
+        let context = context::get_context_from_quickjs_context(env, &ctx)?;
 
-    persistent_to_ptr(result)
-}
+        let result = context::with_context(context, |ctx| {
+            let js_array = rquickjs::Array::new(ctx.clone()).unwrap();
+            Persistent::save(&ctx, js_array)
+        });
 
-/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSArray.closeArray
-#[no_mangle]
-pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSArray_closeArray<'a>(
-    mut _env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-    array_ptr: jlong,
-) {
-    trace!("Closed QuickJSArray with id {}", array_ptr);
-    let runtime = ptr_to_persistent(array_ptr);
-    drop(runtime);
-}
+        trace!("Called QuickJSArray.createNativeArray()");
+        Ok(ArrayHandle::new(result).into())
+    }
 
-/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSArray.getArraySize
-#[no_mangle]
-pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSArray_getArraySize<'a>(
-    mut _env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-    array_ptr: jlong,
-    context_object: JObject<'a>,
-) -> jint {
-    let result = with_array(
-        _env,
-        array_ptr,
-        context_object,
-        |mut _env, _context_object, _ctx, array| array.len() as jint,
-    );
-    result
-}
-
-/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSArray.setValue
-#[no_mangle]
-pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSArray_setValue<'a>(
-    mut env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-    array_ptr: jlong,
-    context_object: JObject<'a>,
-    index: jint,
-    value: JObject<'a>,
-) -> jboolean {
-    let value = match java_js_proxy::ProxiedJavaValue::from_object(&mut env, &context_object, value)
-    {
-        Ok(value) => value,
-        Err(e) => {
-            env.throw_new(
-                "io/github/stefanrichterhuber/quickjs/QuickJSScriptException",
-                e.to_string(),
-            )
-            .unwrap();
-            return false as jboolean;
-        }
-    };
-
-    with_array(
-        env,
-        array_ptr,
-        context_object,
-        |mut _env, context_object, _ctx, array| {
-            let s: Result<(), _> = array.set(index as usize, value);
-            if s.is_err() {
-                context::handle_exception(s.err().unwrap(), &_ctx, &context_object, &mut _env);
+    fn set_value<'local>(
+        env: &mut Env<'local>,
+        _class: JClass<'local>,
+        handle: ArrayHandle,
+        ctx: JQuickJSContext<'local>,
+        index: jint,
+        value: JObject<'local>,
+    ) -> Result<jboolean, Self::Error> {
+        let value = match java_js_proxy::ProxiedJavaValue::from_object(env, &ctx, value) {
+            Ok(value) => value,
+            Err(e) => {
+                context::throw_script_exception(env, e.to_string());
+                return Ok(false);
             }
-        },
-    );
+        };
 
-    true as jboolean
-}
-
-/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSArray.addValue
-#[no_mangle]
-pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSArray_addValue<'a>(
-    mut env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-    array_ptr: jlong,
-    context_object: JObject<'a>,
-    index: jint,
-    value: JObject<'a>,
-) -> jboolean {
-    let value = match java_js_proxy::ProxiedJavaValue::from_object(&mut env, &context_object, value)
-    {
-        Ok(value) => value,
-        Err(e) => {
-            env.throw_new(
-                "io/github/stefanrichterhuber/quickjs/QuickJSScriptException",
-                e.to_string(),
-            )
-            .unwrap();
-            return false as jboolean;
-        }
-    };
-
-    let result = with_array(
-        env,
-        array_ptr,
-        context_object,
-        |mut _env, context_object, _ctx, array| {
-            let result = splice_array(array, index, 0, Some(value));
-            if result.is_err() {
-                context::handle_exception(result.err().unwrap(), &_ctx, &context_object, &mut _env);
-                return false as jboolean;
+        with_array(env, handle, &ctx, |env, ctx, array| {
+            if let Err(e) = array.set(index as usize, value) {
+                context::handle_exception(e, &ctx, env);
             }
-            true as jboolean
-        },
-    );
+        })?;
 
-    result
-}
+        Ok(true)
+    }
 
-/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSArray.getValue
-#[no_mangle]
-pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSArray_getValue<'a>(
-    env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-    array_ptr: jlong,
-    context_object: JObject<'a>,
-    index: jint,
-) -> JObject<'a> {
-    let value = with_array(
-        env,
-        array_ptr,
-        context_object,
-        |mut env, ctx_object, _ctx, array| {
+    fn add_value<'local>(
+        env: &mut Env<'local>,
+        _class: JClass<'local>,
+        handle: ArrayHandle,
+        ctx: JQuickJSContext<'local>,
+        index: jint,
+        value: JObject<'local>,
+    ) -> Result<jboolean, Self::Error> {
+        let value = match java_js_proxy::ProxiedJavaValue::from_object(env, &ctx, value) {
+            Ok(value) => value,
+            Err(e) => {
+                context::throw_script_exception(env, e.to_string());
+                return Ok(false);
+            }
+        };
+
+        with_array(env, handle, &ctx, |env, ctx, array| {
+            if let Err(e) = splice_array(array, index, 0, Some(value)) {
+                context::handle_exception(e, &ctx, env);
+                return false;
+            }
+            true
+        })
+    }
+
+    fn get_value<'local>(
+        env: &mut Env<'local>,
+        _class: JClass<'local>,
+        handle: ArrayHandle,
+        ctx: JQuickJSContext<'local>,
+        index: jint,
+    ) -> Result<JObject<'local>, Self::Error> {
+        with_array(env, handle, &ctx, |env, js_ctx, array| {
             let s: Result<JSJavaProxy, _> = array.get(index as usize);
-            let value = match s {
-                Ok(s) => s.into_jobject(&ctx_object, &mut env).unwrap(),
+            match s {
+                Ok(s) => s.into_jobject(&ctx, env).unwrap(),
                 Err(e) => {
-                    context::handle_exception(e, &_ctx, &ctx_object, &mut env);
+                    context::handle_exception(e, &js_ctx, env);
                     JObject::null()
                 }
-            };
-            value
-        },
-    );
-
-    value
-}
-
-/// Implementation of io.github.stefanrichterhuber.quickjs.QuickJSArray.removeValue
-#[no_mangle]
-pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSArray_removeValue<'a>(
-    env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-    array_ptr: jlong,
-    context_object: JObject<'a>,
-    index: jint,
-) -> jboolean {
-    let result = with_array(
-        env,
-        array_ptr,
-        context_object,
-        |mut env, ctx_object, ctx, array| {
-            let result = splice_array(array, index, 1, None);
-            if result.is_err() {
-                context::handle_exception(result.err().unwrap(), &ctx, &ctx_object, &mut env);
-                return false as jboolean;
             }
-            true as jboolean
-        },
-    );
+        })
+    }
 
-    result
+    fn remove_value<'local>(
+        env: &mut Env<'local>,
+        _class: JClass<'local>,
+        handle: ArrayHandle,
+        ctx: JQuickJSContext<'local>,
+        index: jint,
+    ) -> Result<jboolean, Self::Error> {
+        with_array(env, handle, &ctx, |env, ctx, array| {
+            if let Err(e) = splice_array(array, index, 1, None) {
+                context::handle_exception(e, &ctx, env);
+                return false;
+            }
+            true
+        })
+    }
 }
 
 /// Helper function to splice an array, by calling the splice method on the array.
@@ -266,32 +225,6 @@ fn splice_array<'js>(
         }
     };
     Ok(())
-}
-
-/// Converts a pointer to a persistent array
-///
-/// # Arguments
-///
-/// * `array_ptr` - The pointer to the persistent array
-///
-/// # Returns
-///
-/// A persistent array
-pub(crate) fn ptr_to_persistent<'js>(array_ptr: jlong) -> Box<Persistent<Array<'static>>> {
-    unsafe { Box::from_raw(array_ptr as *mut Persistent<Array<'static>>) }
-}
-
-/// Converts a persistent array to a pointer
-///
-/// # Arguments
-///
-/// * `array` - The persistent array to convert
-///
-/// # Returns
-///
-/// A pointer to the persistent array
-pub(crate) fn persistent_to_ptr<'js>(array: Box<Persistent<Array<'static>>>) -> jlong {
-    Box::into_raw(array) as jlong
 }
 
 #[cfg(test)]

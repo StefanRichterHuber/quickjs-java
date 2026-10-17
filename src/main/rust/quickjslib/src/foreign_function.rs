@@ -1,95 +1,103 @@
 use jni::{
-    objects::{JObject, JObjectArray},
-    sys::jlong,
-    JNIEnv,
+    bind_java_type,
+    objects::{JClass, JObject, JObjectArray},
+    Env,
 };
 use log::trace;
 use rquickjs::{function::Args, Function};
 
-use crate::{context, java_js_proxy, js_java_proxy::JSJavaProxy, with_locale};
+use crate::{
+    context::{self, JQuickJSContext},
+    handles::FunctionHandle,
+    java_js_proxy,
+    js_java_proxy::JSJavaProxy,
+    with_locale,
+};
 
-/// Implementation io.github.stefanrichterhuber.quickjs.QuickJSFunction.closeFunction(long ptr)
-#[no_mangle]
-pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSFunction_closeFunction<
-    'a,
->(
-    mut _env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-    function_ptr: jlong,
-) {
-    trace!("Closed QuickJSFunction with id {}", function_ptr);
-    let runtime = ptr_to_function(function_ptr);
-    drop(runtime);
+bind_java_type! {
+    rust_type = pub JQuickJSFunction,
+    java_type = "io.github.stefanrichterhuber.quickjs.QuickJSFunction",
+
+    type_map = {
+        JQuickJSContext => "io.github.stefanrichterhuber.quickjs.QuickJSContext",
+        unsafe FunctionHandle => long,
+    },
+
+    fields {
+        ptr: jlong,
+        ctx: JQuickJSContext,
+    },
+
+    constructors {
+        fn new(ptr: jlong, name: JString, context: JQuickJSContext),
+    },
+
+    native_methods {
+        extern static fn close_function(handle: FunctionHandle),
+        extern fn call_function(handle: FunctionHandle, args: JObject[]) -> JObject,
+    },
 }
 
-/// Converts a raw pointer to a function back to a Box<Function>.
-pub(crate) fn ptr_to_function(fun_ptr: jlong) -> Box<Function<'static>> {
-    unsafe { Box::from_raw(fun_ptr as *mut Function) }
+bind_java_type! {
+    rust_type = pub JVariadicFunction,
+    java_type = "io.github.stefanrichterhuber.quickjs.VariadicFunction",
+
+    methods {
+        fn apply(args: JObject[]) -> JObject,
+    },
 }
 
-/// Converts a Box<Function> to a raw pointer.
-pub(crate) fn function_to_ptr(fun: Box<Function>) -> jlong {
-    Box::into_raw(fun) as jlong
-}
+impl JQuickJSFunctionNativeInterface for JQuickJSFunctionAPI {
+    type Error = jni::errors::Error;
 
-/// Implementation io.github.stefanrichterhuber.quickjs.QuickJSFunction.callFunction(long ptr)
-#[no_mangle]
-pub extern "system" fn Java_io_github_stefanrichterhuber_quickjs_QuickJSFunction_callFunction<
-    'a,
->(
-    mut _env: JNIEnv<'a>,
-    _obj: JObject<'a>,
-    runtime_ptr: jlong,
-    _values: JObjectArray<'a>,
-) -> JObject<'a> {
-    // Fetch context object from QuickJS Function
-    let context = _env
-        .get_field(
-            &_obj,
-            "ctx",
-            "Lio/github/stefanrichterhuber/quickjs/QuickJSContext;",
-        )
-        .unwrap()
-        .l()
-        .unwrap();
+    fn close_function<'local>(
+        _env: &mut Env<'local>,
+        _class: JClass<'local>,
+        handle: FunctionHandle,
+    ) -> Result<(), Self::Error> {
+        trace!("Closed QuickJSFunction {:?}", handle);
+        drop(unsafe { handle.into_box() });
+        Ok(())
+    }
 
-    let func = ptr_to_function(runtime_ptr);
-    trace!("Called QuickJSFunction with id {}", runtime_ptr);
-    let result = invoke_js_function_with_java_parameters(_env, &context, &func, _values);
+    fn call_function<'local>(
+        env: &mut Env<'local>,
+        this: JQuickJSFunction<'local>,
+        handle: FunctionHandle,
+        args: JObjectArray<'local>,
+    ) -> Result<JObject<'local>, Self::Error> {
+        // Fetch context object from QuickJS Function
+        let context = this.ctx(env)?;
 
-    // Prevents dropping the function
-    _ = function_to_ptr(func);
-    result
+        let func = unsafe { handle.as_ref() };
+        trace!("Called QuickJSFunction {:?}", handle);
+        invoke_js_function_with_java_parameters(env, &context, func, &args)
+    }
 }
 
 /// Invokes a JS function with Java parameters. All java parameters are converted to their JS representations, then the function is called.
 pub(crate) fn invoke_js_function_with_java_parameters<'a>(
-    mut env: JNIEnv<'a>,
-    context_object: &JObject<'a>,
+    env: &mut Env<'a>,
+    context_object: &JQuickJSContext<'_>,
     func: &Function<'_>,
-    parameters: JObjectArray<'a>,
-) -> JObject<'a> {
+    parameters: &JObjectArray<'_>,
+) -> jni::errors::Result<JObject<'a>> {
     let ctx = func.ctx();
     let locale = with_locale::TemporaryLocale::new_default();
 
-    let args_len = env.get_array_length(&parameters).unwrap();
+    let args_len = parameters.len(env)?;
 
     let s: Result<JSJavaProxy, _> = if args_len > 0 {
-        let mut args = Vec::with_capacity(args_len as usize);
+        let mut args = Vec::with_capacity(args_len);
         for i in 0..args_len {
-            let arg = env.get_object_array_element(&parameters, i).unwrap();
-            let arg_js =
-                java_js_proxy::ProxiedJavaValue::from_object(&mut env, context_object, arg);
+            let arg = parameters.get_element(env, i)?;
+            let arg_js = java_js_proxy::ProxiedJavaValue::from_object(env, context_object, arg);
 
             let arg_js = match arg_js {
                 Ok(arg_js) => arg_js,
                 Err(e) => {
-                    env.throw_new(
-                        "io/github/stefanrichterhuber/quickjs/QuickJSScriptException",
-                        e.to_string(),
-                    )
-                    .unwrap();
-                    return JObject::null();
+                    context::throw_script_exception(env, e.to_string());
+                    return Ok(JObject::null());
                 }
             };
             args.push(arg_js);
@@ -106,11 +114,11 @@ pub(crate) fn invoke_js_function_with_java_parameters<'a>(
     };
 
     let result = match s {
-        Ok(s) => s.into_jobject(context_object, &mut env).unwrap(),
+        Ok(s) => s.into_jobject(context_object, env).unwrap(),
         Err(e) => {
-            context::handle_exception(e, ctx, context_object, &mut env);
+            context::handle_exception(e, ctx, env);
             JObject::null()
         }
     };
-    result
+    Ok(result)
 }

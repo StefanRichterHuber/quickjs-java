@@ -23,22 +23,16 @@ default = ["locale_workaround"]
 
 [dependencies]
 # All this dump-* features help debugging
-rquickjs = { version = "0.11.0", features = [
+rquickjs = { version = "0.14.0", features = [
     #  "dump-objects",
     #  "dump-read-object",
     #  "dump-bytecode",
     "bindgen",
 ] }
-jni = { version = "0.21" }
-log = { version = "0.4", features = ["std"] }
-lazy_static = "1.4.0"
+jni = { version = "0.22.4" }
+log = { version = "0.4.34", features = ["std"] }
 libc = { version = "0.2", optional = true }
-
-[patch.crates-io]
-# Lazy static is required for 'invocation' feature of jni and 'bindgen' feature of rquickjs, but produces some type errors in the latest published verson 1.4 
-lazy_static = { git = "https://github.com/rust-lang-nursery/lazy-static.rs", branch = "master" }
-
 
 [dev-dependencies]
 # Invocation feature is necessary for tests to spin up a VM
-jni = { version = "0.21", features = ["invocation"] }
+jni = { version = "0.22.4", features = ["invocation"] }
