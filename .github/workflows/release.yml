@@ -1,0 +1,241 @@
+# Builds, signs and publishes a release to Maven Central, then tags it and bumps main to the next
+# development version. Started manually: Actions -> Release -> Run workflow.
+#
+# Order matters, because a Central release cannot be undone: nothing is pushed to git before Central
+# reports the deployment as PUBLISHED. If anything fails earlier, simply run the workflow again.
+
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Version to release, e.g. 2.0.3"
+        required: true
+      next_version:
+        description: "Next development version, e.g. 2.0.4-SNAPSHOT (default: patch + 1)"
+        required: false
+      dry_run:
+        description: "Dry run: build, sign and verify only. Nothing is published or pushed"
+        type: boolean
+        default: true
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  # Signing subkey; MAVEN_GPG_KEY holds only this subkey
+  SIGNING_KEY_FINGERPRINT: C7C7C0A36933383592DD48A1FBB8C6D33874B74F
+  PRIMARY_KEY_FINGERPRINT: 060EC5778F870626CED6FF01165B2DF3D2D2648B
+  NATIVE_PROFILES: build-linux-x86-64,build-linux-armv7,build-linux-aarch64,build-windows-x86_64
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # Secrets live in this environment only
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Check inputs
+        id: versions
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          NEXT_VERSION: ${{ inputs.next_version }}
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Releases must be started from main (got $GITHUB_REF)"; exit 1
+          fi
+          if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::release_version must look like 1.2.3 (got '$RELEASE_VERSION')"; exit 1
+          fi
+          if [[ -z "$NEXT_VERSION" ]]; then
+            IFS=. read -r major minor patch <<<"$RELEASE_VERSION"
+            NEXT_VERSION="$major.$minor.$((patch + 1))-SNAPSHOT"
+          fi
+          if [[ ! "$NEXT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-SNAPSHOT$ ]]; then
+            echo "::error::next_version must look like 1.2.4-SNAPSHOT (got '$NEXT_VERSION')"; exit 1
+          fi
+          echo "release=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "next=$NEXT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing $RELEASE_VERSION, next development version $NEXT_VERSION (dry run: ${{ inputs.dry_run }})" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Check tag does not exist yet
+        env:
+          TAG: ${{ steps.versions.outputs.tag }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            echo "::error::Tag $TAG already exists"; exit 1
+          fi
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          # Default is "-D warnings", which would turn any warning in the native library into a hard error
+          rustflags: ""
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      - name: Install cargo cross
+        # Same source as the install-cross maven profile used for local builds
+        run: cargo install cross --git https://github.com/cross-rs/cross --locked
+
+      - name: Import public key from keyserver
+        # Central verifies the signatures against the public keyservers. Fail early if the signing
+        # subkey has not been uploaded there yet.
+        run: |
+          gpg --batch --keyserver hkps://keyserver.ubuntu.com --recv-keys "$PRIMARY_KEY_FINGERPRINT"
+          if ! gpg --batch --with-colons --with-subkey-fingerprints --list-keys "$PRIMARY_KEY_FINGERPRINT" \
+              | grep -q "^fpr:.*:$SIGNING_KEY_FINGERPRINT:"; then
+            echo "::error::Signing subkey $SIGNING_KEY_FINGERPRINT is not on keyserver.ubuntu.com yet: gpg --keyserver hkps://keyserver.ubuntu.com --send-keys $PRIMARY_KEY_FINGERPRINT"
+            exit 1
+          fi
+
+      - name: Check signing key secret
+        # Fail early with a clear message if MAVEN_GPG_KEY does not contain the signing subkey
+        env:
+          MAVEN_GPG_KEY: ${{ secrets.MAVEN_GPG_KEY }}
+        run: |
+          home=$(mktemp -d)
+          gpg --homedir "$home" --batch --quiet --import <<<"$MAVEN_GPG_KEY" 2>/dev/null || true
+          secret_keys=$(gpg --homedir "$home" --batch --with-colons --with-subkey-fingerprints -K \
+            | awk -F: '($1=="sec"||$1=="ssb") {stub=($15=="#"); next} $1=="fpr" && !stub {print $10}')
+          gpgconf --homedir "$home" --kill gpg-agent || true
+          rm -rf "$home"
+          if ! grep -qx "$SIGNING_KEY_FINGERPRINT" <<<"$secret_keys"; then
+            echo "::error::MAVEN_GPG_KEY does not contain the secret subkey $SIGNING_KEY_FINGERPRINT (found: ${secret_keys:-none})"
+            exit 1
+          fi
+
+      - name: Set release version
+        env:
+          VERSION: ${{ steps.versions.outputs.release }}
+          TAG: ${{ steps.versions.outputs.tag }}
+        run: |
+          mvn -B -q org.codehaus.mojo:versions-maven-plugin:2.18.0:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+          mvn -B -q org.codehaus.mojo:versions-maven-plugin:2.18.0:set-scm-tag -DnewTag="$TAG" -DgenerateBackupPoms=false
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Release $TAG"
+
+      - name: Build, test and sign
+        # Deploys into a local staging repository only; it is verified and uploaded below
+        env:
+          MAVEN_GPG_KEY: ${{ secrets.MAVEN_GPG_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        run: >
+          mvn -B -P release,$NATIVE_PROFILES
+          -Dgpg.signer=bc
+          -Dgpg.keyFingerprint=$SIGNING_KEY_FINGERPRINT
+          -DaltDeploymentRepository=staging::file://$GITHUB_WORKSPACE/target/staging-deploy
+          deploy
+
+      - name: Verify native libraries
+        # Each native profile must have contributed its library to the jar
+        env:
+          VERSION: ${{ steps.versions.outputs.release }}
+        run: |
+          jar=target/quickjs-java-$VERSION.jar
+          for lib in linux-x86-64/libjavaquickjs.so linux-armv7/libjavaquickjs.so linux-aarch64/libjavaquickjs.so win32-x86-64/javaquickjs.dll; do
+            if ! unzip -l "$jar" | grep -q "io/github/stefanrichterhuber/quickjs/libs/$lib$"; then
+              echo "::error::Native library $lib missing in $jar"; unzip -l "$jar"; exit 1
+            fi
+          done
+
+      - name: Verify signatures
+        working-directory: target/staging-deploy
+        run: |
+          count=0
+          while IFS= read -r -d '' file; do
+            if [[ ! -f "$file.asc" ]]; then
+              echo "::error::Missing signature: $file"; exit 1
+            fi
+            if ! gpg --batch --status-fd 1 --verify "$file.asc" "$file" 2>/dev/null | grep -q "^\[GNUPG:\] VALIDSIG $SIGNING_KEY_FINGERPRINT "; then
+              echo "::error::Invalid signature: $file"; exit 1
+            fi
+            count=$((count + 1))
+          done < <(find . \( -name '*.jar' -o -name '*.pom' \) -print0)
+          if [[ $count -eq 0 ]]; then
+            echo "::error::No artifacts found in staging repository"; exit 1
+          fi
+          echo "Verified $count signatures" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Create bundle
+        working-directory: target/staging-deploy
+        run: |
+          # maven-metadata.xml is generated by Central itself and must not be part of the bundle
+          find . -name 'maven-metadata.xml*' -delete
+          zip -qr ../central-bundle.zip .
+          unzip -l ../central-bundle.zip
+
+      - name: Keep bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: central-bundle-${{ steps.versions.outputs.release }}
+          path: target/central-bundle.zip
+          retention-days: 14
+
+      - name: Publish to Maven Central
+        if: ${{ !inputs.dry_run }}
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_TOKEN: ${{ secrets.CENTRAL_TOKEN }}
+          TAG: ${{ steps.versions.outputs.tag }}
+        run: |
+          auth="Authorization: Bearer $(printf '%s:%s' "$CENTRAL_USERNAME" "$CENTRAL_TOKEN" | base64 -w0)"
+          api=https://central.sonatype.com/api/v1/publisher
+          id=$(curl -fsS -X POST -H "$auth" \
+            -F "bundle=@target/central-bundle.zip" \
+            "$api/upload?name=quickjs-java-$TAG&publishingType=AUTOMATIC")
+          echo "Deployment $id uploaded" | tee -a "$GITHUB_STEP_SUMMARY"
+          # Publishing usually takes 5-15 minutes
+          for i in $(seq 1 90); do
+            status=$(curl -fsS -X POST -H "$auth" "$api/status?id=$id")
+            state=$(jq -r .deploymentState <<<"$status")
+            echo "$(date +%T) $state"
+            case "$state" in
+              PUBLISHED) echo "Deployment $id published" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0 ;;
+              FAILED) echo "::error::Deployment $id failed"; jq . <<<"$status"; exit 1 ;;
+            esac
+            sleep 20
+          done
+          echo "::error::Timeout waiting for deployment $id, check https://central.sonatype.com/publishing/deployments"
+          exit 1
+
+      - name: Push tag and bump to next development version
+        if: ${{ !inputs.dry_run }}
+        env:
+          NEXT: ${{ steps.versions.outputs.next }}
+          TAG: ${{ steps.versions.outputs.tag }}
+        run: |
+          git tag -a "$TAG" -m "Release $TAG"
+          # Push the tag first: it marks exactly what was published, even if main moved meanwhile
+          git push origin "refs/tags/$TAG"
+          mvn -B -q org.codehaus.mojo:versions-maven-plugin:2.18.0:set -DnewVersion="$NEXT" -DgenerateBackupPoms=false
+          mvn -B -q org.codehaus.mojo:versions-maven-plugin:2.18.0:set-scm-tag -DnewTag=HEAD -DgenerateBackupPoms=false
+          git commit -am "Prepare next development iteration $NEXT"
+          if ! git push origin HEAD:main; then
+            echo "::error::main moved during the release. $TAG is published and tagged; bump main to $NEXT manually."
+            exit 1
+          fi
+
+      - name: Create GitHub release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.versions.outputs.tag }}
+          VERSION: ${{ steps.versions.outputs.release }}
+        run: |
+          gh release create "$TAG" --title "$TAG" --generate-notes --verify-tag \
+            $(find target/staging-deploy -name "*-$VERSION.jar")
