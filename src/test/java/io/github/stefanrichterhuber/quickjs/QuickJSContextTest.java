@@ -954,4 +954,30 @@ public class QuickJSContextTest {
             assertEquals("Hello World !", r7);
         }
     }
+
+    /**
+     * QuickJS parses numbers in JSON.parse with the locale dependent strtod. The
+     * native library sets the "C" numeric locale while executing JS code. Only
+     * fails without this workaround if the JVM runs with a locale using ',' as
+     * decimal separator (e.g. LC_ALL=de_DE.UTF-8).
+     */
+    @Test
+    public void jsonParseFloatsTest() throws Exception {
+        try (QuickJSRuntime runtime = new QuickJSRuntime();
+                QuickJSContext context = runtime.createContext()) {
+
+            // eval
+            assertEquals(1.5, context.eval("JSON.parse('1.5')"));
+
+            // QuickJSFunction.apply (invoked directly, not within eval)
+            Object f = context.eval("(s) => JSON.parse(s).a");
+            assertInstanceOf(QuickJSFunction.class, f);
+            assertEquals(2.75, ((QuickJSFunction) f).apply("{\"a\": 2.75}"));
+
+            // JS getter triggered by QuickJSObject.get
+            Object o = context.eval("({ get a() { return JSON.parse('3.25'); } })");
+            assertInstanceOf(QuickJSObject.class, o);
+            assertEquals(3.25, ((QuickJSObject<?, ?>) o).get("a"));
+        }
+    }
 }

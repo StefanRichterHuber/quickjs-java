@@ -80,7 +80,17 @@ thread_local! {
 }
 
 /// Helper function to get a Ctx from a Context, handling re-entrancy.
+///
+/// This is the single entry point for executing JS code (eval, function calls, but also property access, which might
+/// trigger getters / setters), so the locale workaround (see `with_locale`) is applied here.
 pub(crate) fn with_context<F, R>(context: &Context, f: F) -> R
+where
+    F: FnOnce(Ctx) -> R,
+{
+    with_locale::with_c_numeric_locale(|| with_context_internal(context, f))
+}
+
+fn with_context_internal<F, R>(context: &Context, f: F) -> R
 where
     F: FnOnce(Ctx) -> R,
 {
@@ -316,10 +326,8 @@ fn eval<'a, S: Into<Vec<u8>>>(
     script: S,
 ) -> JObject<'a> {
     let context = unsafe { handle.as_ref() };
-    let locale = with_locale::TemporaryLocale::new_default();
-
     with_context(context, move |ctx| {
-        let s: Result<JSJavaProxy, _> = locale.with(|| ctx.eval(script));
+        let s: Result<JSJavaProxy, _> = ctx.eval(script);
 
         match s {
             Ok(s) => s.into_jobject(this, env).unwrap(),
@@ -430,4 +438,30 @@ fn throw_js_exception(
     let exception =
         JQuickJSScriptException::new_with_details(env, &cause, &message, &file_name, &stack_trace)?;
     env.throw(JThrowable::from(exception))
+}
+
+#[cfg(test)]
+#[cfg(all(feature = "locale_workaround", not(target_os = "windows")))]
+mod tests {
+    use rquickjs::{Context, Runtime};
+
+    use super::with_context;
+    use crate::with_locale::tests::with_thread_locale;
+
+    const SCRIPT: &str = "JSON.parse('{\"a\": 2.75}').a + JSON.parse('1.5')";
+
+    #[test]
+    fn json_parse_is_locale_independent() {
+        let rt = Runtime::new().unwrap();
+        let context = Context::full(&rt).unwrap();
+
+        with_thread_locale(c"de_DE.UTF-8", || {
+            // Ensure the test is meaningful: without the workaround QuickJS truncates the numbers (2 + 1)
+            let without_workaround: f64 = context.with(|ctx| ctx.eval(SCRIPT).unwrap());
+            assert_eq!(3.0, without_workaround);
+
+            let with_workaround: f64 = with_context(&context, |ctx| ctx.eval(SCRIPT).unwrap());
+            assert_eq!(4.25, with_workaround);
+        });
+    }
 }

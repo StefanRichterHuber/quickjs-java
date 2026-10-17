@@ -83,7 +83,6 @@ pub(crate) fn invoke_js_function_with_java_parameters<'a>(
     parameters: &JObjectArray<'_>,
 ) -> jni::errors::Result<JObject<'a>> {
     let ctx = func.ctx();
-    let locale = with_locale::TemporaryLocale::new_default();
 
     let args_len = parameters.len(env)?;
 
@@ -108,9 +107,10 @@ pub(crate) fn invoke_js_function_with_java_parameters<'a>(
         for arg_js in args.into_iter() {
             args_js.push_arg(arg_js).unwrap();
         }
-        locale.with(|| func.call_arg(args_js))
+        // Called directly (not via context::with_context) from QuickJSFunction.callFunction -> apply the locale workaround here
+        with_locale::with_c_numeric_locale(|| func.call_arg(args_js))
     } else {
-        locale.with(|| func.call(()))
+        with_locale::with_c_numeric_locale(|| func.call(()))
     };
 
     let result = match s {

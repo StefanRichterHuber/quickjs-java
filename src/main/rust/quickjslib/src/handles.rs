@@ -10,6 +10,14 @@ use rquickjs::{Array, Context, Function, Object, Persistent, Runtime};
 macro_rules! native_handle {
     ($(#[$meta:meta])* $name:ident => $target:ty) => {
         $(#[$meta])*
+        ///
+        /// The `PhantomData<*mut T>` is not required for compilation (the struct is not generic). It keeps the handle
+        /// `!Send` and `!Sync`, like the raw pointer it replaces: a plain `jlong` would be both, allowing Rust code to move
+        /// handles to other threads although the QuickJS objects behind them are not thread-safe. This is only a guard
+        /// within this crate, Java may still call the native methods from any thread.
+        ///
+        /// `PhantomData` is zero-sized with alignment 1, so with `repr(transparent)` the handle keeps the exact size and
+        /// alignment of a `jlong`, as required for the `unsafe Handle => long` mapping in `bind_java_type!`.
         #[repr(transparent)]
         #[derive(Copy, Clone, Debug)]
         pub struct $name(jlong, PhantomData<*mut $target>);
