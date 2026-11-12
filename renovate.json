@@ -10,12 +10,6 @@
     {
       "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
       "automerge": true
-    },
-    {
-      "description": "Merge Confidence data exists for Maven (not for crates or GitHub Actions): only automerge Maven updates with high confidence",
-      "matchDatasources": ["maven"],
-      "matchConfidence": ["low", "neutral"],
-      "automerge": false
     }
   ]
 }
