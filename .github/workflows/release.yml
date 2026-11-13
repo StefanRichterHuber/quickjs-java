@@ -75,10 +75,11 @@ jobs:
             echo "::error::Tag $TAG already exists"; exit 1
           fi
 
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
-          # Default is "-D warnings", which would turn any warning in the native library into a hard error
-          rustflags: ""
+          # Default is "deny" (CARGO_BUILD_WARNINGS, also forwarded into cross containers), which turns deprecations in
+          # generated code of dependencies (e.g. jni's bind_java_type!) into hard errors. Empty keeps cargo's default.
+          build-warnings: "
 
       - name: Set up JDK 21
         uses: actions/setup-java@v6
