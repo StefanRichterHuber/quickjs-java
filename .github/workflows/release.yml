@@ -79,7 +79,7 @@ jobs:
         with:
           # Default is "deny" (CARGO_BUILD_WARNINGS, also forwarded into cross containers), which turns deprecations in
           # generated code of dependencies (e.g. jni's bind_java_type!) into hard errors. Empty keeps cargo's default.
-          build-warnings: "
+          build-warnings: ""
 
       - name: Set up JDK 21
         uses: actions/setup-java@v6
