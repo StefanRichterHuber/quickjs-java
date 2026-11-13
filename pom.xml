@@ -172,7 +172,7 @@
                     <plugin>
                         <groupId>org.codehaus.mojo</groupId>
                         <artifactId>exec-maven-plugin</artifactId>
-                        <version>3.2.0</version>
+                        <version>3.7.0</version>
                         <executions>
                             <!-- Ensure cross is installed, our build tool for building the lib for
                             multiple
@@ -216,7 +216,7 @@
                     <plugin>
                         <groupId>org.codehaus.mojo</groupId>
                         <artifactId>exec-maven-plugin</artifactId>
-                        <version>3.2.0</version>
+                        <version>3.7.0</version>
                         <executions>
 
                             <!-- Only build for all platforms during release -->
@@ -297,7 +297,7 @@
                     <plugin>
                         <groupId>org.codehaus.mojo</groupId>
                         <artifactId>exec-maven-plugin</artifactId>
-                        <version>3.2.0</version>
+                        <version>3.7.0</version>
 
                         <executions>
                             <!-- Only build for all platforms during release -->
@@ -372,7 +372,7 @@
                     <plugin>
                         <groupId>org.codehaus.mojo</groupId>
                         <artifactId>exec-maven-plugin</artifactId>
-                        <version>3.2.0</version>
+                        <version>3.7.0</version>
                         <executions>
                             <execution>
                                 <id>build linux arm64</id>
@@ -446,7 +446,7 @@
                     <plugin>
                         <groupId>org.codehaus.mojo</groupId>
                         <artifactId>exec-maven-plugin</artifactId>
-                        <version>3.2.0</version>
+                        <version>3.7.0</version>
 
                         <executions>
                             <execution>
