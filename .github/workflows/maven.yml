@@ -9,28 +9,27 @@
 name: Java CI with Maven
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+    push:
+        branches: ["main"]
+    pull_request:
+        branches: ["main"]
 
 jobs:
-  build:
+    build:
+        runs-on: ubuntu-latest
 
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions-rust-lang/setup-rust-toolchain@v2
-      with:
-        # Default is "deny" (CARGO_BUILD_WARNINGS, also forwarded into cross containers), which turns deprecations in
-        # generated code of dependencies (e.g. jni's bind_java_type!) into hard errors. Empty keeps cargo's default.
-        build-warnings: "
-    - uses: actions/checkout@v7
-    - name: Set up JDK 21
-      uses: actions/setup-java@v6
-      with:
-        java-version: '21'
-        distribution: 'temurin'
-        cache: maven
-    - name: Build with Maven
-      run: mvn -P install-cross,build-linux-x86-64,build-linux-armv7,build-linux-aarch64,build-windows-x86_64 -Dcargo.profile=release -Dcargo.profile.folder=release -B package --file pom.xml
+        steps:
+            - uses: actions-rust-lang/setup-rust-toolchain@v2
+              with:
+                  # Default is "deny" (CARGO_BUILD_WARNINGS, also forwarded into cross containers), which turns deprecations in
+                  # generated code of dependencies (e.g. jni's bind_java_type!) into hard errors. Empty keeps cargo's default.
+                  build-warnings: ""
+            - uses: actions/checkout@v7
+            - name: Set up JDK 21
+              uses: actions/setup-java@v6
+              with:
+                  java-version: "21"
+                  distribution: "temurin"
+                  cache: maven
+            - name: Build with Maven
+              run: mvn -P install-cross,build-linux-x86-64,build-linux-armv7,build-linux-aarch64,build-windows-x86_64 -Dcargo.profile=release -Dcargo.profile.folder=release -B package --file pom.xml
